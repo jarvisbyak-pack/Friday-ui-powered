@@ -1,0 +1,10 @@
+{
+  "name": "Remix n8n AI Voice \u0026 Chat Interface",
+  "description": "Two-way voice and text conversational AI interface communicating with n8n webhook nodes and workflow automation.",
+  "requestFramePermissions": [
+    "microphone"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
