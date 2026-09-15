@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { 
   Copy, 
   ClipboardPaste, 
@@ -14,9 +14,18 @@ import {
   Clock,
   ShieldCheck,
   Zap,
-  Sliders
+  Sliders,
+  AlertTriangle,
+  AlertCircle,
+  Code,
+  RotateCcw
 } from 'lucide-react';
 import { AppSettings, N8nNodeConfig, VoiceSettings } from '../types';
+
+// Common webhook payload size thresholds
+const RECOMMENDED_PAYLOAD_LIMIT_BYTES = 32 * 1024; // 32 KB: Recommended safe size for low-latency webhooks & voice turns
+const COMMON_WEBHOOK_LIMIT_BYTES = 100 * 1024; // 100 KB: Common payload threshold across webhook providers & proxies
+const HARD_WEBHOOK_LIMIT_BYTES = 256 * 1024; // 256 KB: Extreme limit before hard gateway rejection
 
 interface SettingsTabProps {
   settings: AppSettings;
@@ -49,6 +58,70 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
   const [newNodeName, setNewNodeName] = useState('');
   const [newNodeUrl, setNewNodeUrl] = useState('');
   const [newNodeMethod, setNewNodeMethod] = useState<'POST' | 'GET' | 'PUT'>('POST');
+  const [formatFeedback, setFormatFeedback] = useState<string | null>(null);
+
+  // Format bytes into human-readable representation
+  const formatBytes = (bytes: number): string => {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+  };
+
+  // Real-time metrics for the custom payload JSON
+  const payloadRaw = settings.customPayloadJson ?? '';
+  const payloadCharCount = payloadRaw.length;
+  const payloadByteCount = useMemo(() => {
+    return new TextEncoder().encode(payloadRaw).length;
+  }, [payloadRaw]);
+
+  // Webhook payload limit thresholds
+  const isExceedingCommonLimit = payloadByteCount > COMMON_WEBHOOK_LIMIT_BYTES;
+  const isApproachingLimit = payloadByteCount > RECOMMENDED_PAYLOAD_LIMIT_BYTES && !isExceedingCommonLimit;
+  const payloadPercentage = Math.min(100, Math.round((payloadByteCount / COMMON_WEBHOOK_LIMIT_BYTES) * 100));
+
+  // JSON validity check
+  const jsonValidation = useMemo(() => {
+    const trimmed = payloadRaw.trim();
+    if (!trimmed) {
+      return { isValid: true, error: null, isEmpty: true };
+    }
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+        return {
+          isValid: false,
+          error: 'Payload must be a JSON object (e.g. {"key": "value"}).',
+          isEmpty: false,
+        };
+      }
+      return { isValid: true, error: null, isEmpty: false };
+    } catch (err: any) {
+      return { isValid: false, error: err.message, isEmpty: false };
+    }
+  }, [payloadRaw]);
+
+  // Format / prettify JSON
+  const handleFormatPayloadJson = () => {
+    if (!payloadRaw.trim()) return;
+    try {
+      const parsed = JSON.parse(payloadRaw);
+      onUpdateSettings({
+        ...settings,
+        customPayloadJson: JSON.stringify(parsed, null, 2),
+      });
+      setFormatFeedback('Formatted');
+      setTimeout(() => setFormatFeedback(null), 2000);
+    } catch {
+      setFormatFeedback('Invalid syntax');
+      setTimeout(() => setFormatFeedback(null), 2500);
+    }
+  };
+
+  // Reset to default sample JSON
+  const handleResetSamplePayload = () => {
+    const sample = JSON.stringify({ source: 'ai_voice_interface', channel: 'webhook' }, null, 2);
+    onUpdateSettings({ ...settings, customPayloadJson: sample });
+  };
 
   const activeNode = settings.nodes.find((n) => n.id === settings.activeNodeId) || settings.nodes[0];
 
@@ -691,30 +764,240 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
           />
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="space-y-4">
           <div>
-            <label className="block text-xs font-semibold text-stone-700 mb-1.5">
+            <label htmlFor="session-id-input" className="block text-xs font-semibold text-stone-700 mb-1.5">
               Session Identifier
             </label>
             <input
+              id="session-id-input"
               type="text"
               value={settings.sessionId}
               onChange={(e) => onUpdateSettings({ ...settings, sessionId: e.target.value })}
-              className="w-full px-3 py-2 text-xs font-mono bg-stone-50 border border-stone-300 rounded-lg text-stone-900"
+              className="w-full px-3 py-2 text-xs font-mono bg-stone-50 border border-stone-300 rounded-lg text-stone-900 focus:ring-2 focus:ring-orange-500 focus:bg-white outline-hidden"
             />
           </div>
 
-          <div>
-            <label className="block text-xs font-semibold text-stone-700 mb-1.5">
-              Extra JSON Payload Fields (Passed to n8n)
-            </label>
-            <input
-              type="text"
-              value={settings.customPayloadJson}
-              onChange={(e) => onUpdateSettings({ ...settings, customPayloadJson: e.target.value })}
-              placeholder='e.g. {"channel": "voice-hub"}'
-              className="w-full px-3 py-2 text-xs font-mono bg-stone-50 border border-stone-300 rounded-lg text-stone-900"
-            />
+          {/* Custom Webhook JSON Payload Textarea with Character Counter & Size Limit Warnings */}
+          <div className="pt-3 border-t border-stone-100 space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div>
+                <label 
+                  htmlFor="custom-payload-json-textarea" 
+                  className="text-xs font-semibold text-stone-800 flex items-center gap-1.5"
+                >
+                  <Code className="w-3.5 h-3.5 text-orange-600" />
+                  <span>Custom Webhook JSON Payload Fields</span>
+                </label>
+                <p className="text-[11px] text-stone-500 mt-0.5">
+                  Merged into the JSON request body sent to your n8n webhook node with every message.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-1.5 shrink-0">
+                <button
+                  id="btn-format-payload-json"
+                  type="button"
+                  onClick={handleFormatPayloadJson}
+                  disabled={!payloadRaw.trim()}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-lg bg-stone-100 hover:bg-stone-200 text-stone-700 disabled:opacity-40 transition-colors"
+                  title="Format and prettify JSON indentation"
+                >
+                  {formatFeedback ? (
+                    <>
+                      <Check className="w-3 h-3 text-emerald-600" />
+                      <span className="text-emerald-700 font-semibold">{formatFeedback}</span>
+                    </>
+                  ) : (
+                    <>
+                      <Sliders className="w-3 h-3 text-stone-500" />
+                      <span>Format JSON</span>
+                    </>
+                  )}
+                </button>
+
+                <button
+                  id="btn-sample-payload-json"
+                  type="button"
+                  onClick={handleResetSamplePayload}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-lg bg-stone-100 hover:bg-stone-200 text-stone-600 transition-colors"
+                  title="Reset to default sample JSON structure"
+                >
+                  <RotateCcw className="w-3 h-3 text-stone-500" />
+                  <span>Reset Sample</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Custom JSON Payload Text Area */}
+            <div className="relative">
+              <textarea
+                id="custom-payload-json-textarea"
+                rows={5}
+                value={settings.customPayloadJson}
+                onChange={(e) => onUpdateSettings({ ...settings, customPayloadJson: e.target.value })}
+                placeholder='{\n  "source": "ai_voice_interface",\n  "department": "operations"\n}'
+                className={`w-full p-3 text-xs font-mono rounded-xl bg-stone-50 text-stone-900 border transition-all focus:outline-hidden focus:bg-white ${
+                  isExceedingCommonLimit
+                    ? 'border-rose-400 focus:ring-2 focus:ring-rose-500'
+                    : isApproachingLimit
+                    ? 'border-amber-400 focus:ring-2 focus:ring-amber-500'
+                    : !jsonValidation.isValid && !jsonValidation.isEmpty
+                    ? 'border-rose-300 focus:ring-2 focus:ring-rose-400'
+                    : 'border-stone-300 focus:ring-2 focus:ring-orange-500'
+                }`}
+              />
+            </div>
+
+            {/* Real-time Character Counter & Payload Size Capacity Indicator */}
+            <div className="space-y-1.5">
+              <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                {/* JSON validity status & Limit reference */}
+                <div className="flex items-center gap-2">
+                  {payloadRaw.trim() ? (
+                    jsonValidation.isValid ? (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 text-[11px] font-medium border border-emerald-200">
+                        <Check className="w-3 h-3 text-emerald-600" />
+                        Valid JSON
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-rose-50 text-rose-700 text-[11px] font-medium border border-rose-200">
+                        <AlertCircle className="w-3 h-3 text-rose-600" />
+                        Invalid JSON syntax
+                      </span>
+                    )
+                  ) : (
+                    <span className="text-[11px] text-stone-400 font-mono">Empty (optional)</span>
+                  )}
+
+                  <span className="text-[11px] text-stone-300">|</span>
+
+                  <span className="text-[11px] text-stone-500">
+                    Common limit: <strong className="font-mono text-stone-700">100 KB</strong>
+                  </span>
+                </div>
+
+                {/* Character Counter & Metric readout */}
+                <div 
+                  id="payload-character-counter" 
+                  className="flex items-center gap-2 font-mono text-xs"
+                >
+                  <span 
+                    className={`font-semibold ${
+                      isExceedingCommonLimit
+                        ? 'text-rose-600'
+                        : isApproachingLimit
+                        ? 'text-amber-600'
+                        : 'text-stone-700'
+                    }`}
+                  >
+                    {payloadCharCount.toLocaleString()} chars
+                  </span>
+                  <span className="text-stone-300">/</span>
+                  <span className="text-stone-500">
+                    {formatBytes(payloadByteCount)}
+                  </span>
+                  <span 
+                    className={`text-[11px] px-1.5 py-0.5 rounded font-mono ${
+                      isExceedingCommonLimit
+                        ? 'bg-rose-100 text-rose-800 font-bold'
+                        : isApproachingLimit
+                        ? 'bg-amber-100 text-amber-800 font-medium'
+                        : 'bg-stone-100 text-stone-600'
+                    }`}
+                  >
+                    {payloadPercentage}%
+                  </span>
+                </div>
+              </div>
+
+              {/* Progress bar visual capacity indicator */}
+              <div 
+                id="payload-size-progress-bar"
+                className="w-full bg-stone-200/80 rounded-full h-1.5 overflow-hidden"
+                title={`${payloadCharCount.toLocaleString()} characters (${formatBytes(payloadByteCount)}) of 100 KB common limit`}
+              >
+                <div
+                  className={`h-full transition-all duration-300 ${
+                    isExceedingCommonLimit
+                      ? 'bg-rose-600'
+                      : isApproachingLimit
+                      ? 'bg-amber-500'
+                      : 'bg-emerald-500'
+                  }`}
+                  style={{ width: `${payloadPercentage}%` }}
+                />
+              </div>
+            </div>
+
+            {/* Warning Banner: Exceeded Common Webhook Payload Size Limit (100 KB) */}
+            {isExceedingCommonLimit && (
+              <div 
+                id="payload-limit-warning-exceeded"
+                className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-start gap-2.5 animate-in fade-in duration-200"
+              >
+                <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                <div className="space-y-0.5">
+                  <div className="font-semibold text-rose-900 flex items-center gap-1.5">
+                    <span>Exceeds Common Webhook Payload Limit (100 KB)</span>
+                    <span className="font-mono text-[10px] bg-rose-200 text-rose-900 px-1.5 py-0.5 rounded font-bold">
+                      {formatBytes(payloadByteCount)} / 100 KB
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-rose-700 leading-relaxed">
+                    Most standard webhook listeners, API gateways, and reverse proxies (including n8n instances, AWS API Gateway, and Cloud Run) reject payloads exceeding 100 KB with <strong>HTTP 413 (Payload Too Large)</strong>. Trim or compress your payload fields to prevent dispatch failures.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Warning Banner: Approaching Webhook Payload Size Limit (> 32 KB) */}
+            {isApproachingLimit && (
+              <div 
+                id="payload-limit-warning-caution"
+                className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-xs flex items-start gap-2.5 animate-in fade-in duration-200"
+              >
+                <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                <div className="space-y-0.5">
+                  <div className="font-semibold text-amber-900 flex items-center gap-1.5">
+                    <span>Approaching Webhook Payload Size Limit (&gt;32 KB)</span>
+                    <span className="font-mono text-[10px] bg-amber-200 text-amber-900 px-1.5 py-0.5 rounded font-bold">
+                      {formatBytes(payloadByteCount)}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-amber-700 leading-relaxed">
+                    Payloads over 32 KB may introduce latency in continuous two-way voice conversations and can trigger gateway timeouts in resource-constrained environments.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Syntax error feedback if invalid JSON */}
+            {!jsonValidation.isValid && !jsonValidation.isEmpty && (
+              <div 
+                id="payload-json-syntax-error"
+                className="p-2.5 rounded-lg bg-rose-50/70 border border-rose-200/80 text-[11px] text-rose-800 flex items-center gap-2"
+              >
+                <AlertCircle className="w-3.5 h-3.5 text-rose-500 shrink-0" />
+                <span className="font-mono">{jsonValidation.error}</span>
+              </div>
+            )}
+
+            {/* Common payload threshold reference cards */}
+            <div className="grid grid-cols-3 gap-2 pt-1 text-[10px] text-stone-500 font-mono">
+              <div className="p-2 rounded-lg bg-stone-50 border border-stone-200/70 text-center">
+                <span className="text-stone-400 block font-sans text-[9px] uppercase tracking-wider">Optimal</span>
+                <span className="text-emerald-700 font-semibold">&lt; 32 KB</span>
+              </div>
+              <div className="p-2 rounded-lg bg-stone-50 border border-stone-200/70 text-center">
+                <span className="text-stone-400 block font-sans text-[9px] uppercase tracking-wider">Common Limit</span>
+                <span className="text-amber-700 font-semibold">100 KB</span>
+              </div>
+              <div className="p-2 rounded-lg bg-stone-50 border border-stone-200/70 text-center">
+                <span className="text-stone-400 block font-sans text-[9px] uppercase tracking-wider">Hard Max</span>
+                <span className="text-rose-700 font-semibold">256 KB</span>
+              </div>
+            </div>
           </div>
         </div>
       </div>
