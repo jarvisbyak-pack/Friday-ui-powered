@@ -3,14 +3,68 @@ import path from 'path';
 import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI } from '@google/genai';
 import dotenv from 'dotenv';
+import { config } from './src/server/config';
+import { FridayOrchestrator } from './src/server/orchestrator';
+import { ProviderRegistry } from './src/server/providers';
+import { TaskStore } from './src/server/task-store';
+import { ToolRegistry } from './src/server/tools';
+import { ProfileStore } from './src/server/profile-store';
+import { buildFridaySystemPrompt } from './src/server/personality';
 
 dotenv.config();
 
 const app = express();
-const PORT = 3000;
+const PORT = config.port;
+const taskStore = new TaskStore(config.dataDir);
+const toolRegistry = new ToolRegistry();
+const providerRegistry = new ProviderRegistry();
+const orchestrator = new FridayOrchestrator(taskStore, toolRegistry);
+const profileStore = new ProfileStore(config.dataDir);
 
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// FRIDAY orchestration API. It exposes state and capability metadata, never credentials.
+app.get('/api/friday/status', (_req, res) => {
+  res.json({ providers: providerRegistry.status(), tools: toolRegistry.status(), taskCount: taskStore.list().length });
+});
+
+app.get('/api/friday/tasks', (_req, res) => res.json({ tasks: taskStore.list() }));
+
+app.get('/api/friday/profile', (_req, res) => res.json({ memories: profileStore.listPublic() }));
+
+app.post('/api/friday/profile/memories', (req, res) => {
+  try {
+    const { scope, key, value, confirmed } = req.body || {};
+    const memory = profileStore.save({ scope, key, value }, confirmed === true);
+    res.status(201).json({ memory });
+  } catch (error) { res.status(400).json({ error: error instanceof Error ? error.message : 'Unable to save memory.' }); }
+});
+
+app.delete('/api/friday/profile/memories/:id', (req, res) => {
+  if (!profileStore.remove(req.params.id)) return res.status(404).json({ error: 'Memory not found.' });
+  res.status(204).end();
+});
+
+app.get('/api/friday/tasks/:id', (req, res) => {
+  const task = taskStore.get(req.params.id);
+  if (!task) return res.status(404).json({ error: 'Task not found.' });
+  res.json({ task });
+});
+
+app.post('/api/friday/tasks', async (req, res) => {
+  const command = typeof req.body?.command === 'string' ? req.body.command.trim() : '';
+  if (!command) return res.status(400).json({ error: 'A command is required.' });
+  const task = await orchestrator.submit(command);
+  res.status(201).json({ task });
+});
+
+app.post('/api/friday/tasks/:id/authorization', async (req, res) => {
+  if (typeof req.body?.approved !== 'boolean') return res.status(400).json({ error: 'approved must be a boolean.' });
+  const task = await orchestrator.authorize(req.params.id, req.body.approved);
+  if (!task) return res.status(404).json({ error: 'Task not found.' });
+  res.json({ task });
+});
 
 // Lazy GoogleGenAI client
 let aiClient: GoogleGenAI | null = null;
@@ -238,13 +292,7 @@ app.post('/api/n8n/dispatch', async (req, res) => {
 
   if (synthesizeWithAi && ai) {
     try {
-      const defaultInstruction =
-        'You are an intelligent voice and chat conversational AI assistant integrated into an n8n automation workflow. ' +
-        'Your goal is to communicate with the user naturally in two-way conversation, both in text and spoken voice. ' +
-        'Keep voice replies natural, concise, conversational, and direct without robotic greetings or excessive markup. ' +
-        'If n8n returned structured data or action results, speak the key highlights clearly and explain what occurred.';
-
-      const finalInstruction = systemPrompt ? `${defaultInstruction}\n\nCustom instructions: ${systemPrompt}` : defaultInstruction;
+      const finalInstruction = buildFridaySystemPrompt(profileStore.contextForPrompt(), systemPrompt);
 
       const promptContext = [
         `User Input (${inputMode === 'voice' ? 'spoken voice' : 'text'}): "${userMessage}"`,

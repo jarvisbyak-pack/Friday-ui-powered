@@ -6,6 +6,8 @@ import { SettingsTab } from './components/SettingsTab';
 import { PayloadInspectorTab } from './components/PayloadInspectorTab';
 import { useVoiceConversation } from './hooks/useVoiceConversation';
 import { AppSettings, ChatMessage, N8nNodeConfig } from './types';
+import { FridayTaskPanel, FridayTaskSummary } from './components/FridayTaskPanel';
+import { FridayProfilePanel, ProfileMemory } from './components/FridayProfilePanel';
 
 const STORAGE_KEY_SETTINGS = 'n8n_ai_interface_settings_v1';
 const STORAGE_KEY_MESSAGES = 'n8n_ai_interface_messages_v1';
@@ -29,7 +31,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   ],
   synthesizeWithAi: true,
   systemPrompt:
-    'You are a friendly, direct conversational AI interface connecting the user to their n8n workspace automation. Keep spoken voice replies natural, concise, and helpful.',
+    'Be FRIDAY: warm, sharp, energetic, and direct. Keep replies conversational, celebrate only real progress, and never claim an action worked without evidence.',
   continuousVoiceMode: true,
   voiceSettings: {
     voiceURI: '',
@@ -55,6 +57,14 @@ export default function App() {
     data?: any;
     error?: string;
   } | null>(null);
+  const [fridayTask, setFridayTask] = useState<FridayTaskSummary | null>(null);
+  const [profileMemories, setProfileMemories] = useState<ProfileMemory[]>([]);
+
+  useEffect(() => {
+    fetch('/api/friday/profile').then((response) => response.ok ? response.json() : null).then((payload) => {
+      if (payload?.memories) setProfileMemories(payload.memories);
+    }).catch(() => { /* The existing UI remains usable if the FRIDAY service is unavailable. */ });
+  }, []);
 
   // Load settings from localStorage
   const [settings, setSettings] = useState<AppSettings>(() => {
@@ -125,6 +135,20 @@ export default function App() {
       setIsProcessing(true);
 
       try {
+        // Commands that explicitly request workflow execution are handled by FRIDAY's
+        // authorization-aware task engine, not by the conversational webhook path.
+        if (/^(?:run|execute)\s+(?:my\s+)?(.+?)(?:\s+workflow)?[.!?\s]*$/i.test(text.trim())) {
+          const response = await fetch('/api/friday/tasks', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ command: text.trim() }),
+          });
+          const payload = await response.json();
+          if (!response.ok || !payload.task) throw new Error(payload.error || 'FRIDAY could not create a task.');
+          const task = payload.task as FridayTaskSummary;
+          setFridayTask(task);
+          const assistantMessage: ChatMessage = { id: `msg-friday-${Date.now()}`, sender: 'assistant', text: task.result?.summary || task.events.at(-1)?.message || `Task ${task.id} created.`, timestamp: formatTime(), mode, error: task.result?.success === false ? task.result.summary : undefined };
+          setMessages((prev) => [...prev, assistantMessage]);
+          return;
+        }
         // Parse custom JSON payload if any
         let parsedCustomBody = {};
         if (settings.customPayloadJson) {
@@ -213,6 +237,34 @@ export default function App() {
     },
     [activeNode, settings]
   );
+
+  const authorizeFridayTask = async (approved: boolean) => {
+    if (!fridayTask) return;
+    setIsProcessing(true);
+    try {
+      const response = await fetch(`/api/friday/tasks/${fridayTask.id}/authorization`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ approved }) });
+      const payload = await response.json();
+      if (!response.ok || !payload.task) throw new Error(payload.error || 'Unable to update authorization.');
+      const task = payload.task as FridayTaskSummary;
+      setFridayTask(task);
+      setMessages((prev) => [...prev, { id: `msg-friday-${Date.now()}`, sender: 'assistant', text: task.result?.summary || task.events.at(-1)?.message || 'Task updated.', timestamp: formatTime(), mode: 'text', error: task.result?.success === false ? task.result.summary : undefined }]);
+    } catch (error: any) {
+      setMessages((prev) => [...prev, { id: `msg-friday-error-${Date.now()}`, sender: 'assistant', text: `FRIDAY could not update this task: ${error.message || 'Unknown error'}.`, timestamp: formatTime(), mode: 'text', error: error.message }]);
+    } finally { setIsProcessing(false); }
+  };
+
+  const saveProfileMemory = async (memory: { scope: 'user' | 'project'; key: string; value: string }) => {
+    const response = await fetch('/api/friday/profile/memories', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...memory, confirmed: true }) });
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.error || 'Could not save FRIDAY context.');
+    setProfileMemories((current) => [...current.filter((item) => !(item.scope === payload.memory.scope && item.key.toLowerCase() === payload.memory.key.toLowerCase())), payload.memory]);
+  };
+
+  const deleteProfileMemory = async (id: string) => {
+    const response = await fetch(`/api/friday/profile/memories/${id}`, { method: 'DELETE' });
+    if (!response.ok) throw new Error('Could not remove FRIDAY context.');
+    setProfileMemories((current) => current.filter((item) => item.id !== id));
+  };
 
   // Hook for voice and two-way turn-taking
   const voiceManager = useVoiceConversation({
@@ -378,6 +430,9 @@ export default function App() {
           />
         )}
       </main>
+
+      <FridayTaskPanel task={fridayTask} onAuthorize={authorizeFridayTask} />
+      <FridayProfilePanel memories={profileMemories} onSave={saveProfileMemory} onDelete={deleteProfileMemory} />
 
       {/* Confirmation Modal for Clearing Chat History */}
       {showClearConfirm && (

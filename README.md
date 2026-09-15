@@ -1,6 +1,6 @@
 # n8n AI Voice & Chat Interface
 
-A two-way real-time voice and text conversational AI interface designed to communicate with n8n webhook nodes and workflow automations. Powered by Google Gemini AI, Web Speech API, and Express/Vite.
+A two-way real-time voice and text conversational interface for FRIDAY, an authorization-aware task agent. The React UI talks only to the Express backend; providers, credentials, and tools stay server-side.
 
 ---
 
@@ -11,6 +11,28 @@ A two-way real-time voice and text conversational AI interface designed to commu
 - **AI Response Synthesis**: Gemini AI synthesizes complex n8n JSON responses into natural conversational speech.
 - **Payload Inspector**: Real-time inspection of outgoing and incoming webhook payloads, response codes, and roundtrip latency.
 - **Persistent Local Configuration**: Endpoint credentials and chat logs persist safely in your browser's local storage.
+- **FRIDAY task orchestration**: Server-persisted state transitions, execution history, explicit authorization, and actual-result reporting.
+- **Extensible boundaries**: Provider registry, tool registry, n8n integration service, and server-side configuration contracts.
+
+## FRIDAY task flow
+
+`UNDERSTAND → PLAN → AUTHORIZE → BUILD → EXECUTE → INSPECT → VERIFY → FIX → RE-TEST → COMPLETE`
+
+The initial implementation executes only an unambiguous `Run my <workflow> workflow` command. It first performs read-only n8n discovery, stops for explicit authorization, then invokes only a configured workflow webhook. A webhook HTTP response is not reported as a verified workflow completion unless an execution result can be retrieved.
+
+### Current integration boundaries
+
+- `src/server/orchestrator.ts`: command understanding, plan construction, authorization gate, state transitions, inspection, and truthful result reporting.
+- `src/server/providers.ts`: provider contract and registry. Gemini is operational when `GEMINI_API_KEY` is present. OpenAI, Anthropic, and Ollama are declared configuration targets but intentionally have no adapter yet.
+- `src/server/n8n.ts`: real n8n HTTP API client for health, workflow discovery/retrieval, execution discovery/retrieval, and gated workflow mutation endpoints. Workflow execution uses an explicitly configured, approved webhook mapping.
+- `src/server/tools.ts`: registry seam for n8n and future GitHub, files, HTTP, browser, database, MCP, and multi-agent tools.
+- `src/server/task-store.ts`: server-side JSON task history. The data directory is ignored by Git and must be replaced with a database for multi-instance production deployments.
+- `src/server/profile-store.ts`: explicit, structured user/project memory. Temporary conversation content is not persisted automatically; sensitive memories are withheld from browser responses and model prompts.
+- `src/server/personality.ts`: FRIDAY's natural, teammate-like communication policy. It explicitly prioritizes evidence and user authorization over tone.
+
+### n8n safety model
+
+`N8N_BASE_URL` enables read-only API discovery. An execution additionally requires an exact workflow-name or workflow-id mapping in `N8N_WORKFLOW_WEBHOOKS_JSON` and an explicit UI authorization. Creation, updates, activation, and deactivation are implemented behind `FRIDAY_ALLOW_N8N_MUTATIONS=true`; no task planner invokes them automatically.
 
 ---
 
