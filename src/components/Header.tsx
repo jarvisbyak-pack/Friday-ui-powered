@@ -29,6 +29,8 @@ interface HeaderProps {
   onStopSpeaking: () => void;
   themeMode: 'bright' | 'night';
   onToggleTheme: () => void;
+  themeColor: 'orange' | 'blue' | 'violet' | 'emerald' | 'rose';
+  onChangeThemeColor: (color: 'orange' | 'blue' | 'violet' | 'emerald' | 'rose') => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -45,6 +47,8 @@ export const Header: React.FC<HeaderProps> = ({
   onStopSpeaking,
   themeMode,
   onToggleTheme,
+  themeColor,
+  onChangeThemeColor,
 }) => {
   const isListening = conversationState === 'listening';
   const isSpeaking = conversationState === 'speaking';
@@ -106,6 +110,25 @@ export const Header: React.FC<HeaderProps> = ({
             {themeMode === 'bright' ? <Moon className="w-3.5 h-3.5" /> : <Sun className="w-3.5 h-3.5" />}
             <span>{themeMode === 'bright' ? 'Night Mode' : 'Bright Mode'}</span>
           </button>
+
+          {/* Accent theme color */}
+          <div className="inline-flex items-center gap-1.5 px-2 py-1.5 rounded-lg bg-stone-100 border border-stone-200" title="Change FRIDAY accent color">
+            {([
+              ['orange', 'bg-orange-500'],
+              ['blue', 'bg-blue-500'],
+              ['violet', 'bg-violet-500'],
+              ['emerald', 'bg-emerald-500'],
+              ['rose', 'bg-rose-500'],
+            ] as const).map(([color, swatch]) => (
+              <button
+                key={color}
+                type="button"
+                aria-label={`Use ${color} theme`}
+                onClick={() => onChangeThemeColor(color)}
+                className={`w-4 h-4 rounded-full ${swatch} ring-offset-1 transition-transform hover:scale-110 ${themeColor === color ? 'ring-2 ring-stone-900' : ''}`}
+              />
+            ))}
+          </div>
 
           {/* Hands-free Mode Quick Toggle */}
           <button
