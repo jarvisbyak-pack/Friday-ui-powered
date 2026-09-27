@@ -35,6 +35,8 @@ export function useVoiceConversation({
   const lastSubmittedTextRef = useRef('');
   const recognitionGenerationRef = useRef(0);
   const listeningRestartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastSpokenTextRef = useRef('');
+  const speechSuppressionUntilRef = useRef(0);
 
   // Sync refs with state & props
   useEffect(() => {
@@ -166,6 +168,8 @@ export function useVoiceConversation({
         }
 
         stopSpeaking();
+        lastSpokenTextRef.current = cleanText;
+        speechSuppressionUntilRef.current = Date.now() + 1200;
         setConversationState('speaking');
 
         const utterance = new SpeechSynthesisUtterance(cleanText);
@@ -198,6 +202,12 @@ export function useVoiceConversation({
         utterance.onend = () => {
           currentUtteranceRef.current = null;
           (window as any).__voiceUtterance = null;
+          // Keep the microphone closed briefly after TTS ends. Mobile/browser
+          // speech recognition can still receive buffered speaker audio.
+          speechSuppressionUntilRef.current = Math.max(
+            speechSuppressionUntilRef.current,
+            Date.now() + 1200
+          );
           resolve();
         };
 
@@ -302,6 +312,20 @@ export function useVoiceConversation({
         // Detect silence threshold to automatically submit
         const combinedText = (currentTranscriptRef.current + ' ' + interim).trim();
         if (combinedText.length > 1) {
+          // Do not dispatch audio captured immediately after FRIDAY speaks.
+          // This protects against browser/mobile audio-loopback where TTS is
+          // transcribed as if it came from the user.
+          if (Date.now() < speechSuppressionUntilRef.current) {
+            if (silenceTimerRef.current) {
+              clearTimeout(silenceTimerRef.current);
+              silenceTimerRef.current = null;
+            }
+            currentTranscriptRef.current = '';
+            setTranscript('');
+            setInterimTranscript('');
+            return;
+          }
+
           silenceTimerRef.current = setTimeout(() => {
             const textToSubmit = currentTranscriptRef.current.trim() || interim.trim();
             if (textToSubmit) {
@@ -432,8 +456,10 @@ export function useVoiceConversation({
     if (isContinuousActiveRef.current && !isManuallyStoppedRef.current) {
       // Small pause before opening mic again so the user is ready
       setTimeout(() => {
-        startListening();
-      }, 400);
+        if (isContinuousActiveRef.current && !isManuallyStoppedRef.current && conversationStateRef.current !== 'speaking' && conversationStateRef.current !== 'processing') {
+          startListening();
+        }
+      }, 1400);
     } else {
       setConversationState('idle');
     }
