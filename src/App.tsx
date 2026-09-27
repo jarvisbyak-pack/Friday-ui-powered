@@ -47,6 +47,10 @@ const DEFAULT_SETTINGS: AppSettings = {
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<'chat' | 'voice' | 'settings' | 'inspector'>('chat');
+  const [themeMode, setThemeMode] = useState<'bright' | 'night'>(() => {
+    if (typeof window === 'undefined') return 'bright';
+    return localStorage.getItem('friday-theme') === 'night' ? 'night' : 'bright';
+  });
   const [isProcessing, setIsProcessing] = useState(false);
   const [testLoading, setTestLoading] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
@@ -65,6 +69,11 @@ export default function App() {
       if (payload?.memories) setProfileMemories(payload.memories);
     }).catch(() => { /* The existing UI remains usable if the FRIDAY service is unavailable. */ });
   }, []);
+
+  useEffect(() => {
+    localStorage.setItem('friday-theme', themeMode);
+    document.documentElement.dataset.fridayTheme = themeMode;
+  }, [themeMode]);
 
   // Load settings from localStorage
   const [settings, setSettings] = useState<AppSettings>(() => {
@@ -355,7 +364,7 @@ export default function App() {
   const lastAiMsg = [...messages].reverse().find((m) => m.sender === 'assistant');
 
   return (
-    <div className="min-h-screen bg-stone-50 text-stone-900 flex flex-col font-sans selection:bg-orange-200">
+    <div className="min-h-screen bg-stone-50 text-stone-900 flex flex-col font-sans selection:bg-orange-200 transition-colors duration-300">
       {/* Navigation Header */}
       <Header
         activeTab={activeTab}
@@ -369,6 +378,8 @@ export default function App() {
         onStartListening={voiceManager.startListening}
         onStopListening={voiceManager.stopListening}
         onStopSpeaking={voiceManager.stopSpeaking}
+        themeMode={themeMode}
+        onToggleTheme={() => setThemeMode((mode) => mode === 'bright' ? 'night' : 'bright')}
       />
 
       {/* Main Tab Content Area */}
