@@ -1,1 +1,53 @@
 @import "tailwindcss";
+
+/* FRIDAY appearance modes. Bright remains the default; Night Mode is persisted by App.tsx. */
+html[data-friday-theme="night"] {
+  color-scheme: dark;
+  background: #0a0d12;
+}
+
+html[data-friday-theme="night"] body {
+  background: #0a0d12;
+  color: #e5e7eb;
+}
+
+html[data-friday-theme="night"] .bg-white { background-color: #11161d !important; }
+html[data-friday-theme="night"] .bg-stone-50 { background-color: #0a0d12 !important; }
+html[data-friday-theme="night"] .bg-stone-100 { background-color: #171d26 !important; }
+html[data-friday-theme="night"] .bg-stone-200 { background-color: #222a35 !important; }
+html[data-friday-theme="night"] .text-stone-900 { color: #f3f4f6 !important; }
+html[data-friday-theme="night"] .text-stone-800 { color: #e5e7eb !important; }
+html[data-friday-theme="night"] .text-stone-700 { color: #d1d5db !important; }
+html[data-friday-theme="night"] .text-stone-600 { color: #9ca3af !important; }
+html[data-friday-theme="night"] .text-stone-500 { color: #9ca3af !important; }
+html[data-friday-theme="night"] .text-stone-400 { color: #6b7280 !important; }
+html[data-friday-theme="night"] .border-stone-200 { border-color: #2a3340 !important; }
+html[data-friday-theme="night"] .border-stone-300 { border-color: #374151 !important; }
+html[data-friday-theme="night"] .hover\:bg-stone-50:hover { background-color: #171d26 !important; }
+html[data-friday-theme="night"] .hover\:bg-stone-100:hover { background-color: #1d2530 !important; }
+html[data-friday-theme="night"] .hover\:bg-stone-200:hover { background-color: #27313e !important; }
+
+html[data-friday-theme="night"] input,
+html[data-friday-theme="night"] textarea,
+html[data-friday-theme="night"] select {
+  background-color: #11161d;
+  color: #e5e7eb;
+  border-color: #2a3340;
+}
+
+html[data-friday-theme="night"] option {
+  background: #11161d;
+  color: #e5e7eb;
+}
+
+html[data-friday-theme="night"] .shadow-xs,
+html[data-friday-theme="night"] .shadow-sm,
+html[data-friday-theme="night"] .shadow-md,
+html[data-friday-theme="night"] .shadow-lg {
+  --tw-shadow-color: rgb(0 0 0 / 0.35);
+}
+
+html[data-friday-theme="night"] ::selection {
+  background: rgb(249 115 22 / 0.35);
+  color: #fff;
+}
