@@ -51,6 +51,11 @@ export default function App() {
     if (typeof window === 'undefined') return 'bright';
     return localStorage.getItem('friday-theme') === 'night' ? 'night' : 'bright';
   });
+  const [themeColor, setThemeColor] = useState<'orange' | 'blue' | 'violet' | 'emerald' | 'rose'>(() => {
+    if (typeof window === 'undefined') return 'orange';
+    const saved = localStorage.getItem('friday-theme-color');
+    return saved === 'blue' || saved === 'violet' || saved === 'emerald' || saved === 'rose' ? saved : 'orange';
+  });
   const [isProcessing, setIsProcessing] = useState(false);
   const [testLoading, setTestLoading] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
@@ -72,8 +77,10 @@ export default function App() {
 
   useEffect(() => {
     localStorage.setItem('friday-theme', themeMode);
+    localStorage.setItem('friday-theme-color', themeColor);
     document.documentElement.dataset.fridayTheme = themeMode;
-  }, [themeMode]);
+    document.documentElement.dataset.fridayColor = themeColor;
+  }, [themeMode, themeColor]);
 
   // Load settings from localStorage
   const [settings, setSettings] = useState<AppSettings>(() => {
@@ -380,6 +387,8 @@ export default function App() {
         onStopSpeaking={voiceManager.stopSpeaking}
         themeMode={themeMode}
         onToggleTheme={() => setThemeMode((mode) => mode === 'bright' ? 'night' : 'bright')}
+        themeColor={themeColor}
+        onChangeThemeColor={setThemeColor}
       />
 
       {/* Main Tab Content Area */}
