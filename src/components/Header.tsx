@@ -9,7 +9,9 @@ import {
   Radio, 
   Workflow, 
   Sparkles,
-  Volume2
+  Volume2,
+  Sun,
+  Moon
 } from 'lucide-react';
 import { N8nNodeConfig, ConversationState } from '../types';
 
@@ -25,6 +27,8 @@ interface HeaderProps {
   onStartListening: () => void;
   onStopListening: () => void;
   onStopSpeaking: () => void;
+  themeMode: 'bright' | 'night';
+  onToggleTheme: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -39,6 +43,8 @@ export const Header: React.FC<HeaderProps> = ({
   onStartListening,
   onStopListening,
   onStopSpeaking,
+  themeMode,
+  onToggleTheme,
 }) => {
   const isListening = conversationState === 'listening';
   const isSpeaking = conversationState === 'speaking';
@@ -90,6 +96,17 @@ export const Header: React.FC<HeaderProps> = ({
 
         {/* Live Voice Status Indicator / Quick Action */}
         <div className="flex items-center gap-2">
+          {/* Appearance */}
+          <button
+            type="button"
+            onClick={onToggleTheme}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-stone-100 text-stone-700 hover:bg-stone-200 border border-stone-200 transition-colors"
+            title={`Switch to ${themeMode === 'bright' ? 'Night' : 'Bright'} Mode`}
+          >
+            {themeMode === 'bright' ? <Moon className="w-3.5 h-3.5" /> : <Sun className="w-3.5 h-3.5" />}
+            <span>{themeMode === 'bright' ? 'Night Mode' : 'Bright Mode'}</span>
+          </button>
+
           {/* Hands-free Mode Quick Toggle */}
           <button
             type="button"
