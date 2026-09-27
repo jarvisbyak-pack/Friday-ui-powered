@@ -6,8 +6,6 @@ import { SettingsTab } from './components/SettingsTab';
 import { PayloadInspectorTab } from './components/PayloadInspectorTab';
 import { useVoiceConversation } from './hooks/useVoiceConversation';
 import { AppSettings, ChatMessage, N8nNodeConfig } from './types';
-import { FridayTaskPanel, FridayTaskSummary } from './components/FridayTaskPanel';
-import { FridayProfilePanel, ProfileMemory } from './components/FridayProfilePanel';
 
 const STORAGE_KEY_SETTINGS = 'n8n_ai_interface_settings_v1';
 const STORAGE_KEY_MESSAGES = 'n8n_ai_interface_messages_v1';
@@ -66,14 +64,6 @@ export default function App() {
     data?: any;
     error?: string;
   } | null>(null);
-  const [fridayTask, setFridayTask] = useState<FridayTaskSummary | null>(null);
-  const [profileMemories, setProfileMemories] = useState<ProfileMemory[]>([]);
-
-  useEffect(() => {
-    fetch('/api/friday/profile').then((response) => response.ok ? response.json() : null).then((payload) => {
-      if (payload?.memories) setProfileMemories(payload.memories);
-    }).catch(() => { /* The existing UI remains usable if the FRIDAY service is unavailable. */ });
-  }, []);
 
   useEffect(() => {
     localStorage.setItem('friday-theme', themeMode);
@@ -134,7 +124,8 @@ export default function App() {
     return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
-  // Dispatch message to backend server / n8n
+  // Dispatch directly from the browser to the configured n8n HTTP webhook.
+  // This UI has no local backend/proxy dependency.
   const handleSendMessage = useCallback(
     async (text: string, mode: 'voice' | 'text' = 'text') => {
       if (!text.trim()) return;
@@ -151,34 +142,23 @@ export default function App() {
       setIsProcessing(true);
 
       try {
-        // Commands that explicitly request workflow execution are handled by FRIDAY's
-        // authorization-aware task engine, not by the conversational webhook path.
-        if (/^(?:run|execute)\s+(?:my\s+)?(.+?)(?:\s+workflow)?[.!?\s]*$/i.test(text.trim())) {
-          const response = await fetch('/api/friday/tasks', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ command: text.trim() }),
-          });
-          const payload = await response.json();
-          if (!response.ok || !payload.task) throw new Error(payload.error || 'FRIDAY could not create a task.');
-          const task = payload.task as FridayTaskSummary;
-          setFridayTask(task);
-          const assistantMessage: ChatMessage = { id: `msg-friday-${Date.now()}`, sender: 'assistant', text: task.result?.summary || task.events.at(-1)?.message || `Task ${task.id} created.`, timestamp: formatTime(), mode, error: task.result?.success === false ? task.result.summary : undefined };
-          setMessages((prev) => [...prev, assistantMessage]);
-          return;
-        }
-        // Parse custom JSON payload if any
-        let parsedCustomBody = {};
+        let parsedCustomBody: Record<string, unknown> = {};
         if (settings.customPayloadJson) {
           try {
-            parsedCustomBody = JSON.parse(settings.customPayloadJson);
+            const parsed = JSON.parse(settings.customPayloadJson);
+            if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+              parsedCustomBody = parsed;
+            }
           } catch {
-            // ignore JSON parse error
+            // Invalid optional custom JSON is ignored; the core message still sends.
           }
         }
 
-        // Prepare headers
-        const requestHeaders: Record<string, string> = {};
+        const requestHeaders: Record<string, string> = {
+          Accept: 'application/json, text/plain, */*',
+        };
         if (activeNode.authType === 'bearer' && activeNode.authToken) {
-          requestHeaders['Authorization'] = `Bearer ${activeNode.authToken}`;
+          requestHeaders.Authorization = `Bearer ${activeNode.authToken}`;
         } else if (
           activeNode.authType === 'custom_header' &&
           activeNode.customHeaderKey &&
@@ -187,63 +167,97 @@ export default function App() {
           requestHeaders[activeNode.customHeaderKey] = activeNode.customHeaderValue;
         }
 
-        const res = await fetch('/api/n8n/dispatch', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            webhookUrl: activeNode.url,
-            method: activeNode.method || 'POST',
-            headers: requestHeaders,
-            customBody: parsedCustomBody,
-            userMessage: text.trim(),
-            inputMode: mode,
-            sessionId: settings.sessionId,
-            nodeEndpointId: activeNode.id,
-            synthesizeWithAi: settings.synthesizeWithAi,
-            systemPrompt: settings.systemPrompt,
-          }),
-        });
+        if (!activeNode.url?.trim()) {
+          throw new Error('No n8n Webhook URL is configured.');
+        }
 
-        const data = await res.json();
+        const payload = {
+          message: text.trim(),
+          query: text.trim(),
+          sessionId: settings.sessionId,
+          nodeEndpointId: activeNode.id,
+          inputMode: mode,
+          timestamp: new Date().toISOString(),
+          ...parsedCustomBody,
+        };
+
+        const startedAt = performance.now();
+        const request: RequestInit = {
+          method: activeNode.method || 'POST',
+          headers: requestHeaders,
+        };
+        if (request.method !== 'GET' && request.method !== 'HEAD') {
+          request.body = JSON.stringify(payload);
+          requestHeaders['Content-Type'] = 'application/json';
+        }
+
+        const res = await fetch(activeNode.url.trim(), request);
+        const latencyMs = Math.round(performance.now() - startedAt);
+
+        const contentType = res.headers.get('content-type') || '';
+        let responseData: any = null;
+        if (res.status !== 204) {
+          const raw = await res.text();
+          if (raw) {
+            if (contentType.includes('application/json')) {
+              try { responseData = JSON.parse(raw); } catch { responseData = raw; }
+            } else {
+              try { responseData = JSON.parse(raw); } catch { responseData = raw; }
+            }
+          }
+        }
+
+        if (!res.ok) {
+          const detail =
+            typeof responseData === 'string'
+              ? responseData
+              : responseData?.message || responseData?.error || `HTTP ${res.status}`;
+          throw new Error(`n8n returned ${detail}`);
+        }
 
         const replyText =
-          data?.reply?.text ||
-          data?.reply?.rawOutput ||
-          (data?.ok ? 'Workflow completed successfully.' : 'Unable to receive response from n8n.');
+          typeof responseData === 'string'
+            ? responseData
+            : responseData?.reply?.text ||
+              responseData?.reply ||
+              responseData?.output ||
+              responseData?.response ||
+              responseData?.message ||
+              responseData?.text ||
+              (responseData ? JSON.stringify(responseData, null, 2) : 'n8n accepted the request.');
 
         const assistantMessage: ChatMessage = {
           id: `msg-ai-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
           sender: 'assistant',
-          text: replyText,
+          text: String(replyText),
           timestamp: formatTime(),
           mode,
-          n8nStatus: data?.n8n?.status,
-          n8nLatencyMs: data?.n8n?.latencyMs,
-          n8nRawData: data?.n8n?.data,
-          aiEnhanced: data?.reply?.aiEnhanced,
+          n8nStatus: res.status,
+          n8nLatencyMs: latencyMs,
+          n8nRawData: responseData,
+          aiEnhanced: false,
           nodeName: activeNode.name,
-          error: data?.n8n?.error,
         };
 
         setMessages((prev) => [...prev, assistantMessage]);
 
-        // Speak aloud if voice response enabled or user spoke
         if (settings.voiceSettings.autoSpeakReplies || mode === 'voice') {
-          await voiceManager.speakText(replyText);
-          // When speaking finishes, trigger hands-free auto listen loop!
+          await voiceManager.speakText(String(replyText));
           voiceManager.onAiFinishedSpeaking();
         } else {
           voiceManager.setConversationState('idle');
         }
       } catch (err: any) {
-        console.error('Dispatch error:', err);
+        console.error('Direct n8n HTTP dispatch error:', err);
+        const message = err?.message || 'Network request failed.';
+
         const errorMessage: ChatMessage = {
           id: `msg-err-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
           sender: 'assistant',
-          text: `Error connecting to n8n node: ${err.message || 'Network request failed'}. Please check your Webhook URL in Settings.`,
+          text: `Unable to reach the n8n Webhook over HTTP: ${message}. Check the Webhook URL and n8n CORS/HTTP access settings.`,
           timestamp: formatTime(),
           mode,
-          error: err.message,
+          error: message,
         };
         setMessages((prev) => [...prev, errorMessage]);
         voiceManager.setConversationState('idle');
@@ -254,34 +268,6 @@ export default function App() {
     [activeNode, settings]
   );
 
-  const authorizeFridayTask = async (approved: boolean) => {
-    if (!fridayTask) return;
-    setIsProcessing(true);
-    try {
-      const response = await fetch(`/api/friday/tasks/${fridayTask.id}/authorization`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ approved }) });
-      const payload = await response.json();
-      if (!response.ok || !payload.task) throw new Error(payload.error || 'Unable to update authorization.');
-      const task = payload.task as FridayTaskSummary;
-      setFridayTask(task);
-      setMessages((prev) => [...prev, { id: `msg-friday-${Date.now()}`, sender: 'assistant', text: task.result?.summary || task.events.at(-1)?.message || 'Task updated.', timestamp: formatTime(), mode: 'text', error: task.result?.success === false ? task.result.summary : undefined }]);
-    } catch (error: any) {
-      setMessages((prev) => [...prev, { id: `msg-friday-error-${Date.now()}`, sender: 'assistant', text: `FRIDAY could not update this task: ${error.message || 'Unknown error'}.`, timestamp: formatTime(), mode: 'text', error: error.message }]);
-    } finally { setIsProcessing(false); }
-  };
-
-  const saveProfileMemory = async (memory: { scope: 'user' | 'project'; key: string; value: string }) => {
-    const response = await fetch('/api/friday/profile/memories', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...memory, confirmed: true }) });
-    const payload = await response.json();
-    if (!response.ok) throw new Error(payload.error || 'Could not save FRIDAY context.');
-    setProfileMemories((current) => [...current.filter((item) => !(item.scope === payload.memory.scope && item.key.toLowerCase() === payload.memory.key.toLowerCase())), payload.memory]);
-  };
-
-  const deleteProfileMemory = async (id: string) => {
-    const response = await fetch(`/api/friday/profile/memories/${id}`, { method: 'DELETE' });
-    if (!response.ok) throw new Error('Could not remove FRIDAY context.');
-    setProfileMemories((current) => current.filter((item) => item.id !== id));
-  };
-
   // Hook for voice and two-way turn-taking
   const voiceManager = useVoiceConversation({
     voiceSettings: settings.voiceSettings,
@@ -290,13 +276,10 @@ export default function App() {
     isAppProcessing: isProcessing,
   });
 
-  // Test node connectivity
+  // Test the configured n8n endpoint directly from the browser over HTTP.
   const handleTestNode = async (node: N8nNodeConfig) => {
-    if (!node.url) {
-      setTestResult({
-        ok: false,
-        error: 'Please enter or paste a valid Webhook URL before testing.',
-      });
+    if (!node.url?.trim()) {
+      setTestResult({ ok: false, error: 'Please enter or paste a valid n8n Webhook URL before testing.' });
       return;
     }
 
@@ -304,71 +287,61 @@ export default function App() {
     setTestResult(null);
 
     try {
-      const headers: Record<string, string> = {};
+      const headers: Record<string, string> = {
+        Accept: 'application/json, text/plain, */*',
+      };
       if (node.authType === 'bearer' && node.authToken) {
-        headers['Authorization'] = `Bearer ${node.authToken}`;
+        headers.Authorization = `Bearer ${node.authToken}`;
       } else if (node.authType === 'custom_header' && node.customHeaderKey && node.customHeaderValue) {
         headers[node.customHeaderKey] = node.customHeaderValue;
       }
 
-      const res = await fetch('/api/n8n/test', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          webhookUrl: node.url,
-          method: node.method,
-          headers,
-        }),
-      });
+      const startedAt = performance.now();
+      const request: RequestInit = { method: node.method || 'POST', headers };
+      if (request.method !== 'GET' && request.method !== 'HEAD') {
+        headers['Content-Type'] = 'application/json';
+        request.body = JSON.stringify({
+          event: 'test_connection',
+          source: 'friday-web-ui',
+          timestamp: new Date().toISOString(),
+          message: 'HTTP connectivity test from FRIDAY Web UI',
+        });
+      }
 
-      const data = await res.json();
-      setTestResult(data);
+      const response = await fetch(node.url.trim(), request);
+      const latencyMs = Math.round(performance.now() - startedAt);
+      const contentType = response.headers.get('content-type') || '';
+      const raw = response.status === 204 ? '' : await response.text();
+      let data: any = raw;
+      if (raw && contentType.includes('application/json')) {
+        try { data = JSON.parse(raw); } catch { /* keep text */ }
+      }
 
-      // Update node latency / status in settings
-      const updatedNodes = settings.nodes.map((n) => {
-        if (n.id === node.id) {
-          return {
-            ...n,
-            lastTestedAt: new Date().toISOString(),
-            lastStatus: data.status,
-            lastLatencyMs: data.latencyMs,
-          };
-        }
-        return n;
-      });
-      setSettings((prev) => ({ ...prev, nodes: updatedNodes }));
-    } catch (err: any) {
-      setTestResult({
-        ok: false,
-        error: err.message || 'Failed to ping n8n webhook',
-      });
+      const result = {
+        ok: response.ok,
+        status: response.status,
+        statusText: response.statusText,
+        latencyMs,
+        contentType,
+        data,
+      };
+      setTestResult(result);
+
+      setSettings((current) => ({
+        ...current,
+        nodes: current.nodes.map((n) =>
+          n.id === node.id
+            ? { ...n, lastTestedAt: new Date().toISOString(), lastStatus: response.status, lastLatencyMs: latencyMs }
+            : n
+        ),
+      }));
+    } catch (error: any) {
+      const latencyMs = Math.round(performance.now() - performance.now());
+      setTestResult({ ok: false, error: error?.message || 'Browser HTTP request failed.', latencyMs });
     } finally {
       setTestLoading(false);
     }
   };
-
-  const handleToggleContinuousMode = () => {
-    const nextState = !settings.continuousVoiceMode;
-    setSettings((prev) => ({ ...prev, continuousVoiceMode: nextState }));
-    if (!nextState) {
-      voiceManager.stopListening();
-    } else {
-      voiceManager.startListening();
-    }
-  };
-
-  const handleClearChat = () => {
-    setShowClearConfirm(true);
-  };
-
-  const confirmClearChat = () => {
-    setMessages([]);
-    localStorage.removeItem(STORAGE_KEY_MESSAGES);
-    setShowClearConfirm(false);
-  };
-
-  // Find last assistant response for voice call view
-  const lastAiMsg = [...messages].reverse().find((m) => m.sender === 'assistant');
 
   return (
     <div className="min-h-screen bg-stone-50 text-stone-900 flex flex-col font-sans selection:bg-orange-200 transition-colors duration-300">
@@ -453,8 +426,6 @@ export default function App() {
         )}
       </main>
 
-      <FridayTaskPanel task={fridayTask} onAuthorize={authorizeFridayTask} />
-      <FridayProfilePanel memories={profileMemories} onSave={saveProfileMemory} onDelete={deleteProfileMemory} />
 
       {/* Confirmation Modal for Clearing Chat History */}
       {showClearConfirm && (
