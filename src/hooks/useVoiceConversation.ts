@@ -22,7 +22,7 @@ export function useVoiceConversation({
   const [isSupported, setIsSupported] = useState(true);
   const [permissionError, setPermissionError] = useState<string | null>(null);
   const [voiceReady, setVoiceReady] = useState(false);
-  const [voiceActivationRequired, setVoiceActivationRequired] = useState(false);
+  const [voiceActivationRequired, setVoiceActivationRequired] = useState(true);
 
   const recognitionRef = useRef<any>(null);
   const silenceTimerRef = useRef<any>(null);
@@ -105,7 +105,7 @@ export function useVoiceConversation({
       const synth = window.speechSynthesis;
       synth.cancel();
       const unlock = new SpeechSynthesisUtterance('FRIDAY voice activated.');
-      unlock.volume = 0.01;
+      unlock.volume = 0.35;
       unlock.onend = () => setVoiceActivationRequired(false);
       unlock.onerror = () => {
         setVoiceActivationRequired(true);
