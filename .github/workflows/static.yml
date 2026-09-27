@@ -1,4 +1,5 @@
 name: Deploy FRIDAY UI to GitHub Pages
+# Phase 1 verification trigger
 
 on:
   push:
