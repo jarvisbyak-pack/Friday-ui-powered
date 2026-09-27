@@ -31,6 +31,8 @@ export function useVoiceConversation({
   const currentTranscriptRef = useRef('');
   const isManuallyStoppedRef = useRef(false);
   const conversationStateRef = useRef<ConversationState>(conversationState);
+  const submissionInFlightRef = useRef(false);
+  const lastSubmittedTextRef = useRef('');
 
   // Sync refs with state & props
   useEffect(() => {
@@ -360,7 +362,12 @@ export function useVoiceConversation({
   // Submit spoken text and coordinate turn-taking
   const submitSpokenText = useCallback(
     async (text: string) => {
-      if (!text.trim() || isAppProcessing) return;
+      const normalizedText = text.trim().replace(/\s+/g, ' ');
+      if (!normalizedText || isAppProcessing || submissionInFlightRef.current) return;
+      if (normalizedText === lastSubmittedTextRef.current) return;
+
+      submissionInFlightRef.current = true;
+      lastSubmittedTextRef.current = normalizedText;
 
       // Stop listening while dispatching & waiting for response
       if (silenceTimerRef.current) {
@@ -384,7 +391,11 @@ export function useVoiceConversation({
         playReceivedChime();
       }
 
-      await onSendMessage(text, 'voice');
+      try {
+        await onSendMessage(normalizedText, 'voice');
+      } finally {
+        submissionInFlightRef.current = false;
+      }
     },
     [isAppProcessing, onSendMessage, voiceSettings.soundEffects]
   );
