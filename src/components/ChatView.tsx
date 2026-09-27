@@ -37,6 +37,8 @@ interface ChatViewProps {
   onClearChat: () => void;
   permissionError?: string | null;
   onDismissPermissionError?: () => void;
+  voiceActivationRequired: boolean;
+  onActivateVoice: () => boolean;
 }
 
 export const ChatView: React.FC<ChatViewProps> = ({
@@ -56,6 +58,8 @@ export const ChatView: React.FC<ChatViewProps> = ({
   onClearChat,
   permissionError,
   onDismissPermissionError,
+  voiceActivationRequired,
+  onActivateVoice,
 }) => {
   const [inputText, setInputText] = useState('');
   const [expandedPayloads, setExpandedPayloads] = useState<Record<string, boolean>>({});
@@ -107,6 +111,22 @@ export const ChatView: React.FC<ChatViewProps> = ({
               Dismiss
             </button>
           )}
+        </div>
+      )}
+
+      {voiceActivationRequired && (
+        <div className="flex items-center justify-between gap-3 p-3 rounded-xl bg-orange-50 border border-orange-200 text-orange-900 text-xs mb-3">
+          <div>
+            <div className="font-semibold">FRIDAY voice is ready to activate</div>
+            <div className="text-orange-700 mt-0.5">Tap once to unlock voice output on this device.</div>
+          </div>
+          <button
+            type="button"
+            onClick={onActivateVoice}
+            className="shrink-0 px-3 py-2 rounded-lg bg-stone-900 text-white font-semibold hover:bg-stone-800 transition-colors"
+          >
+            Enable FRIDAY Voice
+          </button>
         </div>
       )}
 
