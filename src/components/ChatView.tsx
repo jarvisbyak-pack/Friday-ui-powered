@@ -63,6 +63,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
 
   const isListening = conversationState === 'listening';
   const isSpeaking = conversationState === 'speaking';
+  const isThinking = conversationState === 'processing';
 
   // Auto-scroll to bottom on new messages or interim transcripts
   useEffect(() => {
@@ -146,6 +147,65 @@ export const ChatView: React.FC<ChatViewProps> = ({
             </button>
           )}
         </div>
+      </div>
+
+      {/* FRIDAY Presence — makes the interface visibly react while she listens, thinks, and speaks */}
+      <div className={`relative shrink-0 overflow-hidden rounded-[2rem] border transition-all duration-700 mb-3 ${
+        isSpeaking
+          ? 'border-orange-300 bg-orange-50/80 shadow-[0_0_70px_rgba(249,115,22,0.18)]'
+          : isListening
+          ? 'border-emerald-300 bg-emerald-50/80 shadow-[0_0_60px_rgba(16,185,129,0.14)]'
+          : isThinking
+          ? 'border-amber-300 bg-amber-50/80'
+          : 'border-stone-200 bg-white/90'
+      }`}>
+        <div className="relative h-36 sm:h-40 flex items-center justify-center">
+          <div className={`absolute w-28 h-28 rounded-full border transition-all duration-700 ${
+            isSpeaking ? 'border-orange-300 scale-125 animate-pulse' :
+            isListening ? 'border-emerald-300 scale-110 animate-pulse' :
+            isThinking ? 'border-amber-300 animate-spin' : 'border-stone-200'
+          }`} />
+          <div className={`absolute w-20 h-20 rounded-full transition-all duration-500 ${
+            isSpeaking ? 'bg-orange-400/20 scale-110 animate-pulse' :
+            isListening ? 'bg-emerald-400/20 scale-110 animate-pulse' :
+            isThinking ? 'bg-amber-400/20 animate-pulse' : 'bg-orange-400/10'
+          }`} />
+          <div className={`relative z-10 w-16 h-16 rounded-full bg-stone-950 text-white flex items-center justify-center shadow-2xl transition-all duration-300 ${
+            isSpeaking ? 'scale-110 ring-4 ring-orange-300/70' :
+            isListening ? 'scale-105 ring-4 ring-emerald-300/60' :
+            isThinking ? 'ring-4 ring-amber-300/50' : ''
+          }`}>
+            {isSpeaking ? <Volume2 className="w-7 h-7 animate-pulse" /> :
+             isListening ? <Mic className="w-7 h-7 animate-pulse" /> :
+             isThinking ? <RotateCw className="w-7 h-7 animate-spin" /> :
+             <Bot className="w-7 h-7" />}
+          </div>
+          {(isSpeaking || isListening) && (
+            <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex items-end gap-1 h-5">
+              {[1,2,3,4,5,6,7,8,9].map((bar) => (
+                <span key={bar}
+                  className={`w-1 rounded-full animate-pulse ${isSpeaking ? 'bg-orange-500' : 'bg-emerald-500'}`}
+                  style={{ height: \`${6 + ((bar * 7) % 17)}px\`, animationDelay: \`${bar * 70}ms\` }}
+                />
+              ))}
+            </div>
+          )}
+          <div className="absolute top-4 left-5">
+            <div className="text-[10px] tracking-[0.28em] uppercase font-semibold text-stone-400">FRIDAY</div>
+            <div className="text-xs font-medium text-stone-700 mt-1">
+              {isSpeaking ? 'Speaking to you' : isListening ? 'I’m listening' : isThinking ? 'Thinking' : 'Ready'}
+            </div>
+          </div>
+        </div>
+        {(isSpeaking || isListening || transcript || interimTranscript) && (
+          <div className="px-5 pb-4 text-center">
+            <p className="text-sm sm:text-base font-medium text-stone-800 leading-relaxed max-w-2xl mx-auto">
+              {isSpeaking
+                ? [...messages].reverse().find((m) => m.sender === 'assistant')?.text || 'I’m speaking with you…'
+                : transcript || interimTranscript || 'I’m listening…'}
+            </p>
+          </div>
+        )}
       </div>
 
       {/* Messages Feed */}
