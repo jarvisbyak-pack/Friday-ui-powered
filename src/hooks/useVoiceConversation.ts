@@ -33,6 +33,8 @@ export function useVoiceConversation({
   const conversationStateRef = useRef<ConversationState>(conversationState);
   const submissionInFlightRef = useRef(false);
   const lastSubmittedTextRef = useRef('');
+  const recognitionGenerationRef = useRef(0);
+  const listeningRestartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Sync refs with state & props
   useEffect(() => {
@@ -234,16 +236,20 @@ export function useVoiceConversation({
       return;
     }
 
-    // Stop speaking if currently speaking
+    // Invalidate every callback from the previous recognition cycle before
+    // aborting it. This prevents the abort -> onend -> restart race.
+    const generation = ++recognitionGenerationRef.current;
+    if (listeningRestartTimerRef.current) {
+      clearTimeout(listeningRestartTimerRef.current);
+      listeningRestartTimerRef.current = null;
+    }
+
     stopSpeaking();
 
-    // Abort existing instance if any
-    if (recognitionRef.current) {
-      try {
-        recognitionRef.current.abort();
-      } catch {
-        // ignore
-      }
+    const previousRecognition = recognitionRef.current;
+    recognitionRef.current = null;
+    if (previousRecognition) {
+      try { previousRecognition.abort(); } catch { /* ignore */ }
     }
 
     try {
@@ -263,11 +269,13 @@ export function useVoiceConversation({
       }
 
       recognition.onstart = () => {
+        if (generation !== recognitionGenerationRef.current || recognitionRef.current !== recognition) return;
         setPermissionError(null);
         setConversationState('listening');
       };
 
       recognition.onresult = (event: any) => {
+        if (generation !== recognitionGenerationRef.current || recognitionRef.current !== recognition) return;
         let interim = '';
         let final = '';
 
@@ -304,6 +312,7 @@ export function useVoiceConversation({
       };
 
       recognition.onerror = (event: any) => {
+        if (generation !== recognitionGenerationRef.current || recognitionRef.current !== recognition) return;
         if (event.error === 'not-allowed') {
           setPermissionError('Microphone access was denied. Please allow microphone permissions in your browser.');
           setConversationState('idle');
@@ -315,7 +324,10 @@ export function useVoiceConversation({
       };
 
       recognition.onend = () => {
-        // If not manually stopped, not processing, and continuous mode is active, restart
+        // Ignore events from obsolete recognition instances.
+        if (generation !== recognitionGenerationRef.current || recognitionRef.current !== recognition) return;
+
+        recognitionRef.current = null;
         const currentState = conversationStateRef.current;
         if (
           !isManuallyStoppedRef.current &&
@@ -323,11 +335,17 @@ export function useVoiceConversation({
           currentState !== 'processing' &&
           currentState !== 'speaking'
         ) {
-          try {
-            recognition.start();
-          } catch {
-            setConversationState('idle');
-          }
+          listeningRestartTimerRef.current = setTimeout(() => {
+            listeningRestartTimerRef.current = null;
+            if (
+              generation !== recognitionGenerationRef.current ||
+              isManuallyStoppedRef.current ||
+              !isContinuousActiveRef.current ||
+              conversationStateRef.current === 'processing' ||
+              conversationStateRef.current === 'speaking'
+            ) return;
+            startListening();
+          }, 0);
         } else if (!isContinuousActiveRef.current) {
           setConversationState('idle');
         }
@@ -425,7 +443,9 @@ export function useVoiceConversation({
   // Cleanup on unmount
   useEffect(() => {
     return () => {
+      ++recognitionGenerationRef.current;
       if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+      if (listeningRestartTimerRef.current) clearTimeout(listeningRestartTimerRef.current);
       if (recognitionRef.current) {
         try {
           recognitionRef.current.abort();
