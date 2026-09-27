@@ -130,13 +130,28 @@ export function useVoiceConversation({
         currentUtteranceRef.current = utterance;
         (window as any).__voiceUtterance = utterance;
 
-        // Apply voice settings
-        if (voiceSettings.voiceURI) {
-          const selected = availableVoices.find((v) => v.voiceURI === voiceSettings.voiceURI);
-          if (selected) utterance.voice = selected;
-        }
-        utterance.rate = voiceSettings.rate || 1.0;
-        utterance.pitch = voiceSettings.pitch || 1.0;
+        // FRIDAY cinematic voice profile: prefer natural British English voices when available.
+        // This is an original FRIDAY-inspired profile, not a clone of a specific actor.
+        const preferredNames = ['Sonia', 'Hazel', 'Google UK English Female', 'Libby', 'Martha'];
+        const preferredVoice =
+          (voiceSettings.voiceURI
+            ? availableVoices.find((v) => v.voiceURI === voiceSettings.voiceURI)
+            : undefined) ||
+          availableVoices.find((v) => {
+            const name = v.name.toLowerCase();
+            const lang = v.lang.toLowerCase();
+            return (lang.startsWith('en-gb') || lang.startsWith('en_uk')) &&
+              preferredNames.some((preferred) => name.includes(preferred.toLowerCase()));
+          }) ||
+          availableVoices.find((v) => {
+            const lang = v.lang.toLowerCase();
+            return lang.startsWith('en-gb') || lang.startsWith('en_uk');
+          }) ||
+          availableVoices.find((v) => v.lang.toLowerCase().startsWith('en'));
+
+        if (preferredVoice) utterance.voice = preferredVoice;
+        utterance.rate = voiceSettings.rate || 0.94;
+        utterance.pitch = voiceSettings.pitch || 0.82;
 
         utterance.onend = () => {
           currentUtteranceRef.current = null;
@@ -184,7 +199,7 @@ export function useVoiceConversation({
       const recognition = new SpeechRecognition();
       recognition.continuous = true;
       recognition.interimResults = true;
-      recognition.lang = 'en-US';
+      recognition.lang = 'en-GB';
 
       isManuallyStoppedRef.current = false;
       currentTranscriptRef.current = '';
