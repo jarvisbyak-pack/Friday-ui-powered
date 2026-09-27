@@ -31,12 +31,12 @@ const DEFAULT_SETTINGS: AppSettings = {
   ],
   synthesizeWithAi: true,
   systemPrompt:
-    'Be FRIDAY: warm, sharp, energetic, and direct. Keep replies conversational, celebrate only real progress, and never claim an action worked without evidence.',
+    'Be FRIDAY: warm, sharp, composed, futuristic, subtly British, and direct. Speak naturally in short conversational turns. Sound like a calm cinematic AI assistant, not a generic chatbot. Celebrate only real progress, and never claim an action worked without evidence.',
   continuousVoiceMode: true,
   voiceSettings: {
     voiceURI: '',
-    rate: 1.0,
-    pitch: 1.0,
+    rate: 0.94,
+    pitch: 0.82,
     silenceThresholdMs: 1400,
     autoSpeakReplies: true,
     soundEffects: true,
