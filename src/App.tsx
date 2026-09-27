@@ -336,8 +336,7 @@ export default function App() {
         ),
       }));
     } catch (error: any) {
-      const latencyMs = Math.round(performance.now() - performance.now());
-      setTestResult({ ok: false, error: error?.message || 'Browser HTTP request failed.', latencyMs });
+      setTestResult({ ok: false, error: error?.message || 'Browser HTTP request failed.' });
     } finally {
       setTestLoading(false);
     }
