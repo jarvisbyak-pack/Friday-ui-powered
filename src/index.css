@@ -51,3 +51,28 @@ html[data-friday-theme="night"] ::selection {
   background: rgb(249 115 22 / 0.35);
   color: #fff;
 }
+
+
+/* FRIDAY accent palette. The selector is persisted by App.tsx and drives the existing utility-based UI. */
+html[data-friday-color="orange"] { --friday-accent: #f97316; --friday-accent-strong: #ea580c; --friday-accent-soft: #fff7ed; --friday-accent-text: #c2410c; }
+html[data-friday-color="blue"] { --friday-accent: #3b82f6; --friday-accent-strong: #2563eb; --friday-accent-soft: #eff6ff; --friday-accent-text: #1d4ed8; }
+html[data-friday-color="violet"] { --friday-accent: #8b5cf6; --friday-accent-strong: #7c3aed; --friday-accent-soft: #f5f3ff; --friday-accent-text: #6d28d9; }
+html[data-friday-color="emerald"] { --friday-accent: #10b981; --friday-accent-strong: #059669; --friday-accent-soft: #ecfdf5; --friday-accent-text: #047857; }
+html[data-friday-color="rose"] { --friday-accent: #f43f5e; --friday-accent-strong: #e11d48; --friday-accent-soft: #fff1f2; --friday-accent-text: #be123c; }
+
+html[data-friday-color] .bg-orange-500 { background-color: var(--friday-accent) !important; }
+html[data-friday-color] .bg-orange-600 { background-color: var(--friday-accent-strong) !important; }
+html[data-friday-color] .text-orange-600 { color: var(--friday-accent-text) !important; }
+html[data-friday-color] .text-orange-700 { color: var(--friday-accent-text) !important; }
+html[data-friday-color] .border-orange-200 { border-color: color-mix(in srgb, var(--friday-accent) 28%, transparent) !important; }
+html[data-friday-color] .bg-orange-50 { background-color: var(--friday-accent-soft) !important; }
+html[data-friday-color] .hover\\:bg-orange-700:hover { background-color: var(--friday-accent-strong) !important; }
+html[data-friday-color] .ring-orange-300 { --tw-ring-color: color-mix(in srgb, var(--friday-accent) 45%, white) !important; }
+html[data-friday-color] .focus\\:ring-orange-500:focus { --tw-ring-color: var(--friday-accent) !important; }
+
+html[data-friday-theme="night"][data-friday-color="blue"] .bg-orange-50,
+html[data-friday-theme="night"][data-friday-color="violet"] .bg-orange-50,
+html[data-friday-theme="night"][data-friday-color="emerald"] .bg-orange-50,
+html[data-friday-theme="night"][data-friday-color="rose"] .bg-orange-50 {
+  background-color: color-mix(in srgb, var(--friday-accent) 14%, #11161d) !important;
+}
