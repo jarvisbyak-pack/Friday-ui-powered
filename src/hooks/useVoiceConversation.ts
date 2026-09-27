@@ -402,12 +402,11 @@ export function useVoiceConversation({
         clearTimeout(silenceTimerRef.current);
         silenceTimerRef.current = null;
       }
-      if (recognitionRef.current) {
-        try {
-          recognitionRef.current.abort();
-        } catch {
-          // ignore
-        }
+      ++recognitionGenerationRef.current;
+      const recognitionToAbort = recognitionRef.current;
+      recognitionRef.current = null;
+      if (recognitionToAbort) {
+        try { recognitionToAbort.abort(); } catch { /* ignore */ }
       }
 
       setConversationState('processing');
