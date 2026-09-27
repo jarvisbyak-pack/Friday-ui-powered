@@ -149,13 +149,18 @@ export function useVoiceConversation({
           return;
         }
 
-        // Make sure mic is paused while speaking to prevent self-loop
-        if (recognitionRef.current) {
-          try {
-            recognitionRef.current.abort();
-          } catch {
-            // ignore
-          }
+        // Invalidate the current recognition cycle before aborting it so its
+        // delayed onend/onresult callbacks cannot affect the speaking turn.
+        ++recognitionGenerationRef.current;
+        const recognitionToAbort = recognitionRef.current;
+        recognitionRef.current = null;
+        if (recognitionToAbort) {
+          try { recognitionToAbort.abort(); } catch { /* ignore */ }
+        }
+
+        if (listeningRestartTimerRef.current) {
+          clearTimeout(listeningRestartTimerRef.current);
+          listeningRestartTimerRef.current = null;
         }
 
         stopSpeaking();
@@ -340,6 +345,11 @@ export function useVoiceConversation({
   // Stop listening
   const stopListening = useCallback(() => {
     isManuallyStoppedRef.current = true;
+    ++recognitionGenerationRef.current;
+    if (listeningRestartTimerRef.current) {
+      clearTimeout(listeningRestartTimerRef.current);
+      listeningRestartTimerRef.current = null;
+    }
     if (silenceTimerRef.current) {
       clearTimeout(silenceTimerRef.current);
       silenceTimerRef.current = null;
