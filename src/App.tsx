@@ -391,6 +391,8 @@ export default function App() {
             onClearChat={handleClearChat}
             permissionError={voiceManager.permissionError}
             onDismissPermissionError={voiceManager.clearPermissionError}
+            voiceActivationRequired={voiceManager.voiceActivationRequired}
+            onActivateVoice={voiceManager.activateVoice}
           />
         )}
 
