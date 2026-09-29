@@ -505,4 +505,365 @@ export function useVoiceConversation({
     stopSpeaking,
     onAiFinishedSpeaking,
   };
+}        // Keep the rendered Markdown untouched in chat. TTS receives a
+        // separate natural-speaking version with formatting syntax removed.
+        const cleanText = toSpeechText(text);
+
+        if (!cleanText) {
+          resolve();
+          return;
+        }
+
+        // Invalidate the current recognition cycle before aborting it so its
+        // delayed onend/onresult callbacks cannot affect the speaking turn.
+        ++recognitionGenerationRef.current;
+        const recognitionToAbort = recognitionRef.current;
+        recognitionRef.current = null;
+        if (recognitionToAbort) {
+          try { recognitionToAbort.abort(); } catch { /* ignore */ }
+        }
+
+        if (listeningRestartTimerRef.current) {
+          clearTimeout(listeningRestartTimerRef.current);
+          listeningRestartTimerRef.current = null;
+        }
+
+        stopSpeaking();
+        lastSpokenTextRef.current = cleanText;
+        speechSuppressionUntilRef.current = Date.now() + 1200;
+        setConversationState('speaking');
+
+        const utterance = new SpeechSynthesisUtterance(cleanText);
+        currentUtteranceRef.current = utterance;
+        (window as any).__voiceUtterance = utterance;
+
+        // FRIDAY cinematic voice profile: prefer natural British English voices when available.
+        // This is an original FRIDAY-inspired profile, not a clone of a specific actor.
+        const preferredNames = ['Sonia', 'Hazel', 'Google UK English Female', 'Libby', 'Martha'];
+        const preferredVoice =
+          (voiceSettings.voiceURI
+            ? availableVoices.find((v) => v.voiceURI === voiceSettings.voiceURI)
+            : undefined) ||
+          availableVoices.find((v) => {
+            const name = v.name.toLowerCase();
+            const lang = v.lang.toLowerCase();
+            return (lang.startsWith('en-gb') || lang.startsWith('en_uk')) &&
+              preferredNames.some((preferred) => name.includes(preferred.toLowerCase()));
+          }) ||
+          availableVoices.find((v) => {
+            const lang = v.lang.toLowerCase();
+            return lang.startsWith('en-gb') || lang.startsWith('en_uk');
+          }) ||
+          availableVoices.find((v) => v.lang.toLowerCase().startsWith('en'));
+
+        if (preferredVoice) utterance.voice = preferredVoice;
+        utterance.rate = voiceSettings.rate || 0.94;
+        utterance.pitch = voiceSettings.pitch || 0.82;
+
+        utterance.onend = () => {
+          currentUtteranceRef.current = null;
+          (window as any).__voiceUtterance = null;
+          // Keep the microphone closed briefly after TTS ends. Mobile/browser
+          // speech recognition can still receive buffered speaker audio.
+          speechSuppressionUntilRef.current = Math.max(
+            speechSuppressionUntilRef.current,
+            Date.now() + 1200
+          );
+          resolve();
+        };
+
+        utterance.onerror = (err) => {
+          console.warn('Speech synthesis error:', err);
+          setVoiceActivationRequired(true);
+          setPermissionError('Tap “Enable FRIDAY Voice” once to allow voice output.');
+          currentUtteranceRef.current = null;
+          (window as any).__voiceUtterance = null;
+          resolve();
+        };
+
+        try {
+          window.speechSynthesis.speak(utterance);
+        } catch (error) {
+          console.warn('Speech synthesis could not start:', error);
+          setVoiceActivationRequired(true);
+          setPermissionError('Tap “Enable FRIDAY Voice” once to allow voice output.');
+          currentUtteranceRef.current = null;
+          (window as any).__voiceUtterance = null;
+          resolve();
+        }
+      });
+    },
+    [availableVoices, stopSpeaking, voiceSettings]
+  );
+
+  // Initialize and start speech recognition
+  const startListening = useCallback(() => {
+    if (typeof window === 'undefined') return;
+
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      setPermissionError('Speech Recognition is not supported in this browser. Please use Google Chrome or Edge.');
+      setIsSupported(false);
+      return;
+    }
+
+    // Invalidate every callback from the previous recognition cycle before
+    // aborting it. This prevents the abort -> onend -> restart race.
+    const generation = ++recognitionGenerationRef.current;
+    if (listeningRestartTimerRef.current) {
+      clearTimeout(listeningRestartTimerRef.current);
+      listeningRestartTimerRef.current = null;
+    }
+
+    stopSpeaking();
+
+    const previousRecognition = recognitionRef.current;
+    recognitionRef.current = null;
+    if (previousRecognition) {
+      try { previousRecognition.abort(); } catch { /* ignore */ }
+    }
+
+    try {
+      const recognition = new SpeechRecognition();
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.lang = 'en-GB';
+
+      isManuallyStoppedRef.current = false;
+      currentTranscriptRef.current = '';
+      setTranscript('');
+      setInterimTranscript('');
+      setConversationState('listening');
+
+      if (voiceSettings.soundEffects) {
+        playListeningChime();
+      }
+
+      recognition.onstart = () => {
+        if (generation !== recognitionGenerationRef.current || recognitionRef.current !== recognition) return;
+        setPermissionError(null);
+        setConversationState('listening');
+      };
+
+      recognition.onresult = (event: any) => {
+        if (generation !== recognitionGenerationRef.current || recognitionRef.current !== recognition) return;
+        let interim = '';
+        let final = '';
+
+        for (let i = event.resultIndex; i < event.results.length; ++i) {
+          const item = event.results[i];
+          if (item.isFinal) {
+            final += item[0].transcript;
+          } else {
+            interim += item[0].transcript;
+          }
+        }
+
+        if (final) {
+          currentTranscriptRef.current += (currentTranscriptRef.current ? ' ' : '') + final.trim();
+          setTranscript(currentTranscriptRef.current);
+        }
+        setInterimTranscript(interim);
+
+        // Reset silence timer whenever user speaks
+        if (silenceTimerRef.current) {
+          clearTimeout(silenceTimerRef.current);
+        }
+
+        // Detect silence threshold to automatically submit
+        const combinedText = (currentTranscriptRef.current + ' ' + interim).trim();
+        if (combinedText.length > 1) {
+          // Do not dispatch audio captured immediately after FRIDAY speaks.
+          // This protects against browser/mobile audio-loopback where TTS is
+          // transcribed as if it came from the user.
+          if (Date.now() < speechSuppressionUntilRef.current) {
+            if (silenceTimerRef.current) {
+              clearTimeout(silenceTimerRef.current);
+              silenceTimerRef.current = null;
+            }
+            currentTranscriptRef.current = '';
+            setTranscript('');
+            setInterimTranscript('');
+            return;
+          }
+
+          silenceTimerRef.current = setTimeout(() => {
+            const textToSubmit = currentTranscriptRef.current.trim() || interim.trim();
+            if (textToSubmit) {
+              submitSpokenText(textToSubmit);
+            }
+          }, voiceSettings.silenceThresholdMs || 1500);
+        }
+      };
+
+      recognition.onerror = (event: any) => {
+        if (generation !== recognitionGenerationRef.current || recognitionRef.current !== recognition) return;
+        if (event.error === 'not-allowed') {
+          setPermissionError('Microphone access was denied. Please allow microphone permissions in your browser.');
+          setConversationState('idle');
+        } else if (event.error === 'no-speech') {
+          // No speech detected, keep listening if continuous
+        } else {
+          console.warn('Speech recognition warning:', event.error);
+        }
+      };
+
+      recognition.onend = () => {
+        // Ignore events from obsolete recognition instances.
+        if (generation !== recognitionGenerationRef.current || recognitionRef.current !== recognition) return;
+
+        recognitionRef.current = null;
+        const currentState = conversationStateRef.current;
+        if (
+          !isManuallyStoppedRef.current &&
+          isContinuousActiveRef.current &&
+          currentState !== 'processing' &&
+          currentState !== 'speaking'
+        ) {
+          listeningRestartTimerRef.current = setTimeout(() => {
+            listeningRestartTimerRef.current = null;
+            if (
+              generation !== recognitionGenerationRef.current ||
+              isManuallyStoppedRef.current ||
+              !isContinuousActiveRef.current ||
+              conversationStateRef.current === 'processing' ||
+              conversationStateRef.current === 'speaking'
+            ) return;
+            startListening();
+          }, 0);
+        } else if (!isContinuousActiveRef.current) {
+          setConversationState('idle');
+        }
+      };
+
+      recognitionRef.current = recognition;
+      recognition.start();
+    } catch (err: any) {
+      console.error('Failed to start speech recognition:', err);
+      setPermissionError(err.message || 'Could not start voice recognition');
+      setConversationState('idle');
+    }
+  }, [stopSpeaking, voiceSettings.soundEffects, voiceSettings.silenceThresholdMs]);
+
+  // Stop listening
+  const stopListening = useCallback(() => {
+    isManuallyStoppedRef.current = true;
+    ++recognitionGenerationRef.current;
+    if (listeningRestartTimerRef.current) {
+      clearTimeout(listeningRestartTimerRef.current);
+      listeningRestartTimerRef.current = null;
+    }
+    if (silenceTimerRef.current) {
+      clearTimeout(silenceTimerRef.current);
+      silenceTimerRef.current = null;
+    }
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.abort();
+      } catch {
+        // ignore
+      }
+      recognitionRef.current = null;
+    }
+    setInterimTranscript('');
+    setConversationState('idle');
+    if (voiceSettings.soundEffects) {
+      playStopChime();
+    }
+  }, [voiceSettings.soundEffects]);
+
+  // Submit spoken text and coordinate turn-taking
+  const submitSpokenText = useCallback(
+    async (text: string) => {
+      const normalizedText = text.trim().replace(/\s+/g, ' ');
+      if (!normalizedText || isAppProcessing || submissionInFlightRef.current) return;
+      if (normalizedText === lastSubmittedTextRef.current) return;
+
+      submissionInFlightRef.current = true;
+      lastSubmittedTextRef.current = normalizedText;
+
+      // Stop listening while dispatching & waiting for response
+      if (silenceTimerRef.current) {
+        clearTimeout(silenceTimerRef.current);
+        silenceTimerRef.current = null;
+      }
+      ++recognitionGenerationRef.current;
+      const recognitionToAbort = recognitionRef.current;
+      recognitionRef.current = null;
+      if (recognitionToAbort) {
+        try { recognitionToAbort.abort(); } catch { /* ignore */ }
+      }
+
+      setConversationState('processing');
+      setTranscript('');
+      setInterimTranscript('');
+      currentTranscriptRef.current = '';
+
+      if (voiceSettings.soundEffects) {
+        playReceivedChime();
+      }
+
+      try {
+        await onSendMessage(normalizedText, 'voice');
+      } finally {
+        submissionInFlightRef.current = false;
+      }
+    },
+    [isAppProcessing, onSendMessage, voiceSettings.soundEffects]
+  );
+
+  // When AI finishes speaking, if continuous mode is on, resume listening automatically!
+  const onAiFinishedSpeaking = useCallback(() => {
+    if (isContinuousActiveRef.current && !isManuallyStoppedRef.current) {
+      // Small pause before opening mic again so the user is ready
+      setTimeout(() => {
+        if (isContinuousActiveRef.current && !isManuallyStoppedRef.current && conversationStateRef.current !== 'speaking' && conversationStateRef.current !== 'processing') {
+          startListening();
+        }
+      }, 1400);
+    } else {
+      setConversationState('idle');
+    }
+  }, [startListening]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      ++recognitionGenerationRef.current;
+      if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+      if (listeningRestartTimerRef.current) clearTimeout(listeningRestartTimerRef.current);
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.abort();
+        } catch {
+          // ignore
+        }
+      }
+      stopSpeaking();
+    };
+  }, [stopSpeaking]);
+
+  // Clear permission error
+  const clearPermissionError = useCallback(() => {
+    setPermissionError(null);
+  }, []);
+
+  return {
+    conversationState,
+    setConversationState,
+    transcript,
+    interimTranscript,
+    availableVoices,
+    isSupported,
+    voiceReady,
+    voiceActivationRequired,
+    activateVoice,
+    permissionError,
+    clearPermissionError,
+    startListening,
+    stopListening,
+    speakText,
+    stopSpeaking,
+    onAiFinishedSpeaking,
+  };
 }
