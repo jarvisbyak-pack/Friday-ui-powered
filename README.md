@@ -1,90 +1,66 @@
 # FRIDAY Web UI
 
-A browser-only React/Vite interface for FRIDAY. The production UI is a static website and communicates with the configured n8n workflow over HTTP/HTTPS.
+A browser-first React/Vite interface for FRIDAY. This repository now supports a hosted Friday backend path while preserving the existing localhost/n8n-compatible development path.
 
 ## Architecture
 
-```
+Hosted direction:
+
 Browser
   ↓ HTTPS
 FRIDAY Web UI
-  ↓ HTTPS POST/GET
-n8n Webhook
+  ↓ /api
+FRIDAY Web Backend
   ↓
-FRIDAY — Main Orchestrator
-```
+AI provider / future tools
+  ↓
+Persistent database + task workers (next phases)
 
-There is **no production local server, Express API, Gemini proxy, Ollama service, filesystem service, or desktop runtime** in this project.
+Local compatibility remains available:
 
-## Web-only behavior
+Browser
+  ↓
+Existing local/development configuration
+  ↓
+Configured n8n webhook
 
-- The UI is built as static HTML/CSS/JavaScript.
-- Chat and hands-free voice requests call the configured n8n Webhook URL directly from the browser.
-- Webhook responses are parsed in the browser and shown in the conversation/payload inspector.
-- Webhook connectivity tests also run directly from the browser.
-- No `/api/*` application backend is required.
-- No `localhost` or `127.0.0.1` endpoint is used by the production UI.
-- No server-side Gemini API key is required by the UI.
-- Configure the n8n HTTPS Webhook URL in **n8n Settings**.
+## Runtime modes
 
-## n8n requirements
+The UI keeps the existing n8n webhook integration for compatibility.
 
-Because the browser calls n8n directly, the n8n endpoint must be reachable over HTTPS and permit browser CORS requests from the deployed UI origin. The n8n workflow remains responsible for authentication, authorization, Gemini usage, tool execution, and verified execution reporting.
+For the hosted Friday path, configure:
 
-The UI sends a payload containing:
+VITE_FRIDAY_BACKEND_MODE=api
 
-- `message`
-- `query`
-- `sessionId`
-- `nodeEndpointId`
-- `inputMode`
-- `timestamp`
-- any optional custom JSON fields configured in the UI
+In hosted mode, chat requests go to /api/chat and the Gemini credential stays server-side.
 
-For POST requests the payload is sent as JSON. GET/HEAD requests do not receive a request body.
+## Web backend foundation
 
-## Development
+- /api/health — deployment/runtime health check.
+- /api/chat — server-side Gemini request boundary.
+- GEMINI_API_KEY — server-only provider credential.
+- GEMINI_MODEL — configured Gemini model name.
 
-The repository contains only the Vite/React web application and its build configuration.
+Do not expose GEMINI_API_KEY through VITE_ variables or browser code.
 
-```bash
-npm install
-npm run build
-```
+## Deployment
 
-The production deployment is performed by GitHub Actions and GitHub Pages.
+The project remains a Vite application and can be deployed as a web application. vercel.json defines the Vite build/output configuration.
 
-## GitHub Pages
+The current migration is intentionally incremental. The localhost implementation is not deleted or replaced.
 
-GitHub Pages hosts the generated static `dist` directory. GitHub's recommended Actions-based Pages flow builds the site, uploads the static artifact, and deploys it to the Pages environment. 
+## Next Friday layers
 
-The workflow is:
+1. Authentication
+2. PostgreSQL persistence
+3. Conversation and memory storage
+4. Durable task queue and background workers
+5. Streaming task events
+6. File storage and processing
+7. GitHub tool execution
+8. Browser/web tools
+9. Code execution/testing
+10. Deployment and verification controls
+11. Voice backend capabilities
 
-1. Checkout `main`
-2. Install web dependencies
-3. Build with Vite
-4. Upload `dist`
-5. Deploy to GitHub Pages
-
-No Node/Express process is started by the deployed site.
-
-## Voice
-
-Hands-free voice recognition and speech synthesis run in the browser using the browser's Web Speech APIs. The voice turn is sent to n8n only after the browser turn detector accepts it.
-
-## Important security note
-
-The browser is not a safe place for long-lived privileged secrets. Prefer protecting the n8n webhook with an appropriate short-lived/session mechanism or an n8n-side access-control strategy rather than exposing an n8n API key in the UI.
-
-## Current FRIDAY UI features
-
-- Chat and hands-free voice
-- n8n Webhook URL configuration
-- HTTP method selection
-- Optional browser-sent authentication headers
-- Direct webhook connectivity testing
-- Payload inspector
-- Night/Bright appearance
-- FRIDAY accent color selection
-- Browser speech feedback and controlled hands-free turn-taking
-- Mobile-friendly responsive interface
+The target architecture is a real web-based AI agent rather than a browser UI permanently dependent on n8n.
