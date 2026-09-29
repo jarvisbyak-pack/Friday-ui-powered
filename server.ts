@@ -7,6 +7,7 @@ import dotenv from 'dotenv';
 import { PluginRuntime } from './src/pluginRuntime';
 import { authenticate, createTask, listTasks, getTask, addTaskEvent, listTaskEvents, updateTask } from './src/server/persistence';
 import { bootstrapOwner, requireWebSession } from './src/server/webAuth';
+import { configureTaskWorker, enqueueTask } from './src/server/taskWorker';
 import { FridayPlugin } from './src/types';
 import { PermissionLevel, TaskContext, Tool, ToolResult } from './src/brain/types';
 import { 
@@ -144,7 +145,18 @@ app.post('/api/tasks', requireWebSession, (req, res) => {
   if (!command) { res.status(400).json({ ok: false, error: 'Task command is required.' }); return; }
   const task = createTask(req.fridayUser!.id, command, req.body?.payload);
   addTaskEvent(task.id, 'QUEUED', 'Task accepted by the Friday web gateway.');
+  enqueueTask({ id: task.id, userId: req.fridayUser!.id, command, payload: req.body?.payload });
   res.status(202).json({ ok: true, task });
+});
+
+app.get('/api/tasks/:id/events/stream', requireWebSession, (req, res) => {
+  const task = getTask(req.params.id, req.fridayUser!.id);
+  if (!task) { res.status(404).json({ ok: false, error: 'Task not found.' }); return; }
+  res.setHeader('Content-Type', 'text/event-stream'); res.setHeader('Cache-Control', 'no-cache'); res.setHeader('Connection', 'keep-alive');
+  let sent = 0;
+  const send = () => { const events = listTaskEvents(task.id); for (const event of events.slice(sent)) { res.write('data: ' + JSON.stringify(event) + '\\n\\n'); sent++; } };
+  send(); const timer = setInterval(() => { send(); const latest = getTask(task.id, req.fridayUser!.id); if (latest && ['COMPLETED','FAILED','WAITING_FOR_PERMISSION'].includes(latest.status)) { res.write('event: done\\ndata: ' + JSON.stringify(latest) + '\\n\\n'); clearInterval(timer); res.end(); } }, 1000);
+  req.on('close', () => clearInterval(timer));
 });
 
 app.get('/api/tasks/:id', requireWebSession, (req, res) => {
@@ -597,6 +609,7 @@ const fridayBrain = new FridayBrain({
   defaultPermissions: ['READ'], // Enforces PLAN -> APPROVE -> EXECUTE gate for mutating operations
   mcpProvider: n8nMcpProvider,
 });
+configureTaskWorker(fridayBrain);
 
 function registerPluginBrainTools(plugin: FridayPlugin): void {
   for (const tool of plugin.tools) {
