@@ -167,7 +167,9 @@ export default function App() {
           requestHeaders[activeNode.customHeaderKey] = activeNode.customHeaderValue;
         }
 
-        if (!activeNode.url?.trim()) {
+        const hostedBackend = import.meta.env.VITE_FRIDAY_BACKEND_MODE === 'api';
+
+        if (!hostedBackend && !activeNode.url?.trim()) {
           throw new Error('No n8n Webhook URL is configured.');
         }
 
@@ -178,12 +180,13 @@ export default function App() {
           nodeEndpointId: activeNode.id,
           inputMode: mode,
           timestamp: new Date().toISOString(),
+          systemPrompt: settings.systemPrompt,
           ...parsedCustomBody,
         };
 
         const startedAt = performance.now();
         const request: RequestInit = {
-          method: activeNode.method || 'POST',
+          method: hostedBackend ? 'POST' : (activeNode.method || 'POST'),
           headers: requestHeaders,
         };
         if (request.method !== 'GET' && request.method !== 'HEAD') {
@@ -191,7 +194,8 @@ export default function App() {
           requestHeaders['Content-Type'] = 'application/json';
         }
 
-        const res = await fetch(activeNode.url.trim(), request);
+        const dispatchUrl = hostedBackend ? '/api/chat' : activeNode.url.trim();
+        const res = await fetch(dispatchUrl, request);
         const latencyMs = Math.round(performance.now() - startedAt);
 
         const contentType = res.headers.get('content-type') || '';
@@ -212,7 +216,7 @@ export default function App() {
             typeof responseData === 'string'
               ? responseData
               : responseData?.message || responseData?.error || `HTTP ${res.status}`;
-          throw new Error(`n8n returned ${detail}`);
+          throw new Error(hostedBackend ? `Friday backend returned ${detail}` : `n8n returned ${detail}`);
         }
 
         const replyText =
@@ -254,7 +258,9 @@ export default function App() {
         const errorMessage: ChatMessage = {
           id: `msg-err-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
           sender: 'assistant',
-          text: `Unable to reach the n8n Webhook over HTTP: ${message}. Check the Webhook URL and n8n CORS/HTTP access settings.`,
+          text: hostedBackend
+            ? `Unable to reach the Friday web backend: ${message}. Check the deployment and server configuration.`
+            : `Unable to reach the n8n Webhook over HTTP: ${message}. Check the Webhook URL and n8n CORS/HTTP access settings.`,
           timestamp: formatTime(),
           mode,
           error: message,
