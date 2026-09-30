@@ -14,6 +14,7 @@ import {
   Moon
 } from 'lucide-react';
 import { N8nNodeConfig, ConversationState } from '../types';
+import { FaceModeSwitch, FridayFace } from './FaceModeSwitch';
 
 interface HeaderProps {
   activeTab: 'chat' | 'voice' | 'settings' | 'inspector';
@@ -31,6 +32,8 @@ interface HeaderProps {
   onToggleTheme: () => void;
   themeColor: 'orange' | 'blue' | 'violet' | 'emerald' | 'rose';
   onChangeThemeColor: (color: 'orange' | 'blue' | 'violet' | 'emerald' | 'rose') => void;
+  fridayFace: FridayFace;
+  onChangeFridayFace: (face: FridayFace) => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -49,6 +52,8 @@ export const Header: React.FC<HeaderProps> = ({
   onToggleTheme,
   themeColor,
   onChangeThemeColor,
+  fridayFace,
+  onChangeFridayFace,
 }) => {
   const isListening = conversationState === 'listening';
   const isSpeaking = conversationState === 'speaking';
@@ -100,6 +105,8 @@ export const Header: React.FC<HeaderProps> = ({
 
         {/* Live Voice Status Indicator / Quick Action */}
         <div className="flex items-center gap-2">
+          <FaceModeSwitch face={fridayFace} onChange={onChangeFridayFace} />
+
           {/* Appearance */}
           <button
             type="button"
