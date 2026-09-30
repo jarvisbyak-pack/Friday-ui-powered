@@ -6,6 +6,7 @@ import { SettingsTab } from './components/SettingsTab';
 import { PayloadInspectorTab } from './components/PayloadInspectorTab';
 import { useVoiceConversation } from './hooks/useVoiceConversation';
 import { AppSettings, ChatMessage, N8nNodeConfig } from './types';
+import { FridayFace } from './components/FaceModeSwitch';
 
 const STORAGE_KEY_SETTINGS = 'n8n_ai_interface_settings_v1';
 const STORAGE_KEY_MESSAGES = 'n8n_ai_interface_messages_v1';
@@ -45,6 +46,10 @@ const DEFAULT_SETTINGS: AppSettings = {
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<'chat' | 'voice' | 'settings' | 'inspector'>('chat');
+  const [fridayFace, setFridayFace] = useState<FridayFace>(() => {
+    if (typeof window === 'undefined') return 'careful';
+    return localStorage.getItem('friday-face') === 'autonomous' ? 'autonomous' : 'careful';
+  });
   const [themeMode, setThemeMode] = useState<'bright' | 'night'>(() => {
     if (typeof window === 'undefined') return 'bright';
     return localStorage.getItem('friday-theme') === 'night' ? 'night' : 'bright';
@@ -66,6 +71,8 @@ export default function App() {
   } | null>(null);
 
   useEffect(() => {
+    localStorage.setItem('friday-face', fridayFace);
+    document.documentElement.dataset.fridayFace = fridayFace;
     localStorage.setItem('friday-theme', themeMode);
     localStorage.setItem('friday-theme-color', themeColor);
     document.documentElement.dataset.fridayTheme = themeMode;
@@ -343,7 +350,7 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-stone-50 text-stone-900 flex flex-col font-sans selection:bg-orange-200 transition-colors duration-300">
+    <div className={`min-h-screen bg-stone-50 text-stone-900 flex flex-col font-sans selection:bg-orange-200 transition-colors duration-500 ${fridayFace === 'autonomous' ? 'friday-autonomous-shell' : ''}`}>
       {/* Navigation Header */}
       <Header
         activeTab={activeTab}
@@ -361,6 +368,8 @@ export default function App() {
         onToggleTheme={() => setThemeMode((mode) => mode === 'bright' ? 'night' : 'bright')}
         themeColor={themeColor}
         onChangeThemeColor={setThemeColor}
+        fridayFace={fridayFace}
+        onChangeFridayFace={setFridayFace}
       />
 
       {/* Main Tab Content Area */}
