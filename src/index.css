@@ -76,3 +76,119 @@ html[data-friday-theme="night"][data-friday-color="emerald"] .bg-orange-50,
 html[data-friday-theme="night"][data-friday-color="rose"] .bg-orange-50 {
   background-color: color-mix(in srgb, var(--friday-accent) 14%, #11161d) !important;
 }
+
+
+/* FRIDAY character faces. Face 2 changes atmosphere without changing the layout. */
+html[data-friday-face="careful"] {
+  --friday-face-accent: #f97316;
+  --friday-face-glow: rgba(249, 115, 22, 0.10);
+}
+
+html[data-friday-face="autonomous"] {
+  --friday-face-accent: #b91c1c;
+  --friday-face-glow: rgba(127, 29, 29, 0.22);
+  background: #070708;
+}
+
+html[data-friday-face="autonomous"] body {
+  background:
+    radial-gradient(circle at 80% 0%, rgba(127, 29, 29, 0.16), transparent 34%),
+    #070708;
+}
+
+html[data-friday-face="autonomous"] .friday-autonomous-shell {
+  background:
+    radial-gradient(circle at 92% 4%, rgba(185, 28, 28, 0.12), transparent 28%),
+    #070708 !important;
+  color: #f3f4f6;
+}
+
+html[data-friday-face="autonomous"] .friday-autonomous-shell::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
+  box-shadow: inset 0 0 120px rgba(127, 29, 29, 0.10);
+}
+
+.friday-face-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 6px 5px 8px;
+  border: 1px solid #e7e5e4;
+  border-radius: 10px;
+  background: rgba(245, 245, 244, 0.88);
+  transition: all 300ms ease;
+}
+
+.friday-face-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  color: #78716c;
+}
+
+.friday-face-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: #f97316;
+}
+
+.friday-face-options {
+  display: flex;
+  gap: 2px;
+}
+
+.friday-face-options button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 0;
+  border-radius: 7px;
+  padding: 5px 8px;
+  background: transparent;
+  color: #78716c;
+  font-size: 10px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 220ms ease;
+}
+
+.friday-face-options button.active {
+  background: #fff;
+  color: #292524;
+  box-shadow: 0 1px 5px rgba(0,0,0,.08);
+}
+
+.friday-face-options button.active.autonomous {
+  background: #1c0a0a;
+  color: #fca5a5;
+  box-shadow: 0 0 16px rgba(185,28,28,.18);
+}
+
+html[data-friday-face="autonomous"] .friday-face-switch {
+  border-color: #3f1d1d;
+  background: rgba(15, 10, 10, .92);
+}
+
+html[data-friday-face="autonomous"] .friday-face-label {
+  color: #a8a29e;
+}
+
+html[data-friday-face="autonomous"] .friday-face-dot {
+  background: #dc2626;
+  box-shadow: 0 0 8px rgba(220,38,38,.65);
+}
+
+@media (max-width: 760px) {
+  .friday-face-switch {
+    width: 100%;
+    justify-content: space-between;
+  }
+}
