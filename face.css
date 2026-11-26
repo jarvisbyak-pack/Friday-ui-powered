@@ -1,0 +1,290 @@
+.face-mode {
+  position: fixed;
+  inset: 0;
+  z-index: 150;
+  display: none;
+  overflow: hidden;
+  background: radial-gradient(780px 560px at 50% 44%, rgba(var(--mood-rgb), .12), transparent 60%), var(--bg);
+  transition: background .35s ease;
+}
+
+.face-mode.visible {
+  display: flex;
+  flex-direction: column;
+}
+
+.face-top {
+  height: calc(58px + var(--safe-top));
+  padding: var(--safe-top) 16px 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--line);
+  background: var(--bg);
+  position: relative;
+  z-index: 2;
+}
+
+.face-title {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.face-title-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--mood-accent);
+}
+
+.face-center {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 20px 18px calc(24px + var(--safe-bottom));
+  position: relative;
+  z-index: 1;
+}
+
+.face-mood-picker {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0 0 12px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel);
+}
+
+.face-mood-option {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  transition: background .15s, color .15s;
+}
+
+.face-mood-option:hover {
+  color: var(--text);
+  background: var(--raised);
+}
+
+.face-mood-option.active {
+  color: var(--text);
+  background: var(--raised2);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+.face-mood-state {
+  font-size: 11px;
+  color: var(--mood-accent);
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+
+.face-status {
+  font-size: 13px;
+  color: var(--muted);
+  margin-bottom: 18px;
+}
+
+.face-orb-wrap {
+  width: min(320px, 68vw);
+  aspect-ratio: 1;
+  display: grid;
+  place-items: center;
+  position: relative;
+  margin-bottom: 24px;
+}
+
+.face-orb-wrap::before,
+.face-orb-wrap::after {
+  content: "";
+  position: absolute;
+  border-radius: 50%;
+  border: 1px solid rgba(var(--mood-rgb), .18);
+}
+
+.face-orb-wrap::before {
+  inset: 7%;
+  box-shadow: 0 0 80px rgba(var(--mood-rgb), .10);
+}
+
+.face-orb-wrap::after {
+  inset: 18%;
+  border-color: var(--line);
+  animation: face-spin 20s linear infinite;
+}
+
+.face-orb {
+  width: 48%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  position: relative;
+  background: radial-gradient(circle at 35% 30%, var(--orb-core) 0 4%, var(--orb-mid) 18%, var(--orb-deep) 56%, #050505 100%);
+  box-shadow: 0 0 32px rgba(var(--mood-rgb), .45), 0 0 90px rgba(var(--mood-rgb), .18), inset -16px -18px 34px rgba(0, 0, 0, .55);
+  animation: face-breathe 3.8s ease-in-out infinite;
+  transition: background .35s ease, box-shadow .35s ease;
+}
+
+.face-orb::before {
+  content: "";
+  position: absolute;
+  inset: 15%;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, .28);
+}
+
+.face-orb::after {
+  content: "";
+  position: absolute;
+  width: 18%;
+  height: 18%;
+  left: 28%;
+  top: 20%;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, .75);
+  filter: blur(7px);
+}
+
+.face-orb.is-working {
+  animation: face-breathe .9s ease-in-out infinite;
+  box-shadow: 0 0 44px rgba(var(--mood-rgb), .75), 0 0 120px rgba(var(--mood-rgb), .32), inset -16px -18px 34px rgba(0, 0, 0, .55);
+}
+
+.face-orb.is-error {
+  box-shadow: 0 0 40px rgba(217, 119, 87, .55), 0 0 100px rgba(217, 119, 87, .22), inset -16px -18px 34px rgba(0, 0, 0, .55);
+}
+
+.face-state {
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 16px;
+}
+
+.face-wave {
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  margin-bottom: 24px;
+}
+
+.face-wave i {
+  display: block;
+  width: 3px;
+  height: 7px;
+  border-radius: 99px;
+  background: var(--mood-accent);
+  opacity: .75;
+  animation: face-wave 1.2s ease-in-out infinite;
+}
+
+.face-wave i:nth-child(2) { animation-delay: .08s; }
+.face-wave i:nth-child(3) { animation-delay: .16s; }
+.face-wave i:nth-child(4) { animation-delay: .24s; }
+.face-wave i:nth-child(5) { animation-delay: .32s; }
+.face-wave i:nth-child(6) { animation-delay: .24s; }
+.face-wave i:nth-child(7) { animation-delay: .16s; }
+.face-wave i:nth-child(8) { animation-delay: .08s; }
+
+.face-input-wrap {
+  width: min(640px, 100%);
+  border: 1px solid rgba(255, 255, 255, .16);
+  border-radius: 25px;
+  background: var(--raised);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 10px 7px 16px;
+}
+
+body.light .face-input-wrap {
+  border-color: rgba(0, 0, 0, .14);
+}
+
+.face-input-wrap:focus-within {
+  border-color: rgba(255, 255, 255, .34);
+}
+
+.face-input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text);
+  font-size: 14px;
+  padding: 6px 2px;
+}
+
+.face-input::placeholder {
+  color: var(--muted);
+}
+
+.face-hint {
+  font-size: 11px;
+  color: var(--dim);
+  margin-top: 12px;
+}
+
+.face-mode.voice-pulse .face-orb {
+  animation: face-breathe .45s ease-in-out 2;
+}
+
+body[data-mood="focused"] .face-orb { animation: face-focused 2.3s ease-in-out infinite; }
+body[data-mood="alert"] .face-orb { animation: face-alert 1.55s ease-in-out infinite; }
+body[data-mood="angry"] .face-orb { animation: face-angry .78s ease-in-out infinite; }
+body[data-mood="angry"] .face-wave i { animation-duration: .72s; }
+body[data-mood="alert"] .face-wave i { animation-duration: .92s; }
+
+@keyframes face-breathe {
+  0%, 100% { transform: scale(.96); filter: saturate(.92); }
+  50% { transform: scale(1.04); filter: saturate(1.15); }
+}
+
+@keyframes face-focused {
+  0%, 100% { transform: scale(.985); filter: saturate(1); }
+  50% { transform: scale(1.02); filter: saturate(1.24) brightness(1.05); }
+}
+
+@keyframes face-alert {
+  0%, 100% { transform: scale(.96); filter: saturate(1.05); }
+  50% { transform: scale(1.055); filter: saturate(1.38) brightness(1.06); }
+}
+
+@keyframes face-angry {
+  0%, 100% { transform: scale(.93) translateX(0); filter: saturate(1.25); }
+  25% { transform: scale(1.06) translateX(-1px); filter: saturate(1.6) brightness(1.04); }
+  75% { transform: scale(1.05) translateX(1px); filter: saturate(1.6) brightness(1.02); }
+}
+
+@keyframes face-spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes face-wave {
+  0%, 100% { height: 7px; opacity: .45; }
+  50% { height: 25px; opacity: 1; }
+}
+
+@media (max-width: 600px) {
+  .face-orb-wrap {
+    width: min(270px, 72vw);
+    margin-bottom: 20px;
+  }
+  .face-hint {
+    display: none;
+  }
+}
