@@ -1,0 +1,65 @@
+name: Friday frontend checks
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "index.html"
+      - "api.js"
+      - "app.js"
+      - "runtime-config.js"
+      - "styles.css"
+      - "face.js"
+      - "face.css"
+      - ".github/workflows/frontend.yml"
+      - ".github/workflows/deploy.yml"
+  pull_request:
+    paths:
+      - "index.html"
+      - "api.js"
+      - "app.js"
+      - "runtime-config.js"
+      - "styles.css"
+      - "face.js"
+      - "face.css"
+      - ".github/workflows/frontend.yml"
+      - ".github/workflows/deploy.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  syntax:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Check JavaScript syntax
+        run: |
+          node --check api.js
+          node --check app.js
+          node --check face.js
+          node --check runtime-config.js
+      - name: Check required frontend files
+        run: |
+          test -s index.html
+          test -s api.js
+          test -s app.js
+          test -s runtime-config.js
+          test -s styles.css
+          test -s face.css
+          test -s face.js
+          ! grep -RniE "guest mode|open in guest|UI preview.*sign in" app.js index.html
+      - name: Validate production backend URL
+        if: github.event_name != 'pull_request'
+        env:
+          FRIDAY_API_BASE_URL: ${{ vars.FRIDAY_API_BASE_URL || 'https://friday-web-ui-phase-1-frontend-a2m4.onrender.com' }}
+        run: |
+          case "$FRIDAY_API_BASE_URL" in
+            https://*) ;;
+            *) echo "FRIDAY_API_BASE_URL must be an HTTPS backend origin." >&2; exit 1 ;;
+          esac
+          node -e "new URL(process.env.FRIDAY_API_BASE_URL)"
