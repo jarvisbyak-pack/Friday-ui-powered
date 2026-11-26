@@ -32,10 +32,10 @@ test("phase 1 migration declares the required persistent domains", async () => {
     );
   }
 
-  assert.match(migration, /projects_repository_pair_unique/);
-  assert.match(migration, /PRIMARY KEY \\(project_id, user_id\\)/);
-  assert.match(migration, /UNIQUE \\(project_id, tool_key\\)/);
-  assert.match(migration, /UNIQUE \\(agent_run_id, sequence\\)/);
+  assert.ok(migration.includes("projects_repository_pair_unique"));
+  assert.ok(migration.includes("PRIMARY KEY (project_id, user_id)"));
+  assert.ok(migration.includes("UNIQUE (project_id, tool_key)"));
+  assert.ok(migration.includes("UNIQUE (agent_run_id, sequence)"));
 });
 
 test("migration runner includes the phase 1 migration", async () => {
@@ -44,13 +44,10 @@ test("migration runner includes the phase 1 migration", async () => {
     "utf8"
   );
 
-  assert.match(
-    runner,
-    /005_phase1_database_architecture\\.sql/
-  );
-  assert.match(runner, /schema_migrations/);
-  assert.match(runner, /pg_advisory_lock/);
-  assert.match(runner, /Migration failed:/);
+  assert.ok(runner.includes("005_phase1_database_architecture.sql"));
+  assert.ok(runner.includes("schema_migrations"));
+  assert.ok(runner.includes("pg_advisory_lock"));
+  assert.ok(runner.includes("Migration failed:"));
 });
 const hasDatabase = Boolean(process.env.DATABASE_URL);
 
