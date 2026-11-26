@@ -1,0 +1,80 @@
+name: Deploy Friday frontend to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "index.html"
+      - "api.js"
+      - "app.js"
+      - "runtime-config.js"
+      - "styles.css"
+      - "face.js"
+      - "face.css"
+      - ".github/workflows/deploy.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: github-pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate production backend URL
+        env:
+          FRIDAY_API_BASE_URL: ${{ vars.FRIDAY_API_BASE_URL || 'https://friday-web-ui-phase-1-frontend-a2m4.onrender.com' }}
+        run: |
+          if [ -z "$FRIDAY_API_BASE_URL" ]; then
+            echo "FRIDAY_API_BASE_URL is required for production authentication." >&2
+            exit 1
+          fi
+          case "$FRIDAY_API_BASE_URL" in
+            https://*) ;;
+            *) echo "FRIDAY_API_BASE_URL must be an HTTPS backend origin." >&2; exit 1 ;;
+          esac
+          node -e "new URL(process.env.FRIDAY_API_BASE_URL)"
+
+      - name: Build static site with production API configuration
+        env:
+          FRIDAY_API_BASE_URL: ${{ vars.FRIDAY_API_BASE_URL || 'https://friday-web-ui-phase-1-frontend-a2m4.onrender.com' }}
+        run: |
+          set -eu
+          mkdir -p _site
+          for file in index.html api.js app.js styles.css face.js face.css; do
+            test -s "$file"
+            cp "$file" _site/
+          done
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const apiBaseUrl = process.env.FRIDAY_API_BASE_URL.replace(/\/$/, '');
+          const runtimeConfig = 'window.FRIDAY_CONFIG = ' + JSON.stringify({ API_BASE_URL: apiBaseUrl }) + ';\n';
+          fs.writeFileSync('_site/runtime-config.js', runtimeConfig, 'utf8');
+          new URL(apiBaseUrl);
+          NODE
+          test -s _site/runtime-config.js
+          grep -q 'https://friday-web-ui-phase-1-frontend-a2m4.onrender.com' _site/runtime-config.js || grep -q "$FRIDAY_API_BASE_URL" _site/runtime-config.js
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: _site
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
